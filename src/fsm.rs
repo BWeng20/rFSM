@@ -452,6 +452,18 @@ pub enum BindingType {
     Late,
 }
 
+impl FromStr for BindingType {
+    type Err = ();
+
+    fn from_str(input: &str) -> Result<BindingType, Self::Err> {
+        match input.to_lowercase().as_str() {
+            "early" => Ok(BindingType::Early),
+            "Late" => Ok(BindingType::Late),
+            _ => Err(()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum EventType {
     /// for events raised by the platform itself, such as error events
@@ -1409,7 +1421,7 @@ impl Fsm {
     /// done.invoke.\<id\> to be placed in the external event queue of that session, where \<id\> is
     /// the id generated in that session when the \<invoke\> was executed.
     fn returnDoneEvent(&mut self, done_data: &Option<DoneData>) {
-        // TODO
+        // TODO. Currently no "sender" is set by the calling code.
         if self.caller_invoke_id != 0 {
             match &self.caller_sender {
                 None => panic!("caller-sender not available but caller-invoke-id is set."),

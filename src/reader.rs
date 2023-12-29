@@ -7,6 +7,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::str::FromStr;
 
 use log::debug;
 use quick_xml::events::{BytesStart, Event};
@@ -14,7 +15,7 @@ use quick_xml::events::attributes::Attributes;
 use quick_xml::Reader;
 
 use crate::executable_content::{Assign, Cancel, ExecutableContent, Expression, ForEach, get_opt_executable_content_as, get_safe_executable_content_as, If, Log, Raise, SendParameters, TARGET_SCXMLEVENT_PROCESSOR};
-use crate::fsm::{DoneData, ExecutableContentId, ExpressionData, Fsm, HistoryType, ID_COUNTER, Invoke, map_history_type, map_transition_type, SimpleData, SrcData, State, StateId, Transition, TransitionId, TransitionType};
+use crate::fsm::{BindingType, DoneData, ExecutableContentId, ExpressionData, Fsm, HistoryType, ID_COUNTER, Invoke, map_history_type, map_transition_type, SimpleData, SrcData, State, StateId, Transition, TransitionId, TransitionType};
 use crate::fsm::vecToString;
 
 pub type AttributeMap = HashMap<String, String>;
@@ -41,6 +42,7 @@ static DOC_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 /// + __script__ Provides scripting capability. Occurs 0 or 1 times. 5.8 \<script\>
 pub const TAG_SCXML: &str = "scxml";
 pub const ATTR_NAME: &str = "name";
+pub const ATTR_BINDING: &str = "binding";
 
 pub const ATTR_DATAMODEL: &str = "datamodel";
 
@@ -1263,6 +1265,18 @@ impl ReaderState {
                 if datamodel.is_some() {
                     debug!(" scxml.datamodel = {}", datamodel.unwrap());
                     self.fsm.datamodel = datamodel.unwrap().to_string();
+                }
+
+                let binding = attr.get(ATTR_BINDING);
+                if binding.is_some() {
+                    match BindingType::from_str(binding.unwrap()) {
+                        Ok(t) => {
+                            self.fsm.binding = t;
+                        }
+                        Err(_e) => {
+                            panic!("{}: unsupported value {}", ATTR_BINDING, binding.unwrap())
+                        }
+                    }
                 }
                 let version = attr.get(TAG_VERSION);
                 if version.is_some() {
