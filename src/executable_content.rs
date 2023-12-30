@@ -94,6 +94,7 @@ pub struct Expression {
 
 #[derive(Debug)]
 pub struct Log {
+    pub label: String,
     pub expression: String,
 }
 
@@ -290,8 +291,9 @@ impl ExecutableContent for Expression {
 }
 
 impl Log {
-    pub fn new(expression: &str) -> Log {
+    pub fn new(label: &Option<&String>, expression: &str) -> Log {
         Log {
+            label: label.unwrap_or(&"".to_string()).clone(),
             expression: expression.to_string(),
         }
     }

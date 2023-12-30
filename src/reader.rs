@@ -184,6 +184,8 @@ pub const ATTR_SENDID: &str = "sendid";
 
 pub const TAG_ELSE: &str = "else";
 pub const TAG_ELSEIF: &str = "elseif";
+
+pub const ATTR_LABEL: &str = "label";
 pub const ATTR_EXPR: &str = "expr";
 
 pub const NS_XINCLUDE: &str = "http://www.w3.org/2001/XInclude";
@@ -1189,9 +1191,10 @@ impl ReaderState {
 
     fn start_log(&mut self, attr: &AttributeMap) {
         self.verify_parent_tag(TAG_LOG, &[TAG_TRANSITION, TAG_ON_EXIT, TAG_ON_ENTRY, TAG_IF, TAG_FOR_EACH, TAG_FINALIZE]);
+        let label = attr.get(ATTR_LABEL);
         let expr = attr.get(ATTR_EXPR);
         if expr.is_some() {
-            self.add_executable_content(Box::new(Log::new(expr.unwrap().as_str())));
+            self.add_executable_content(Box::new(Log::new(&label, expr.unwrap().as_str())));
         }
     }
 
