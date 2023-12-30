@@ -86,7 +86,7 @@ pub const TAG_HISTORY: &str = "history";
 pub const TAG_PARALLEL: &str = "parallel";
 pub const TAG_FINAL: &str = "final";
 pub const TAG_TRANSITION: &str = "transition";
-pub const TAG_COND: &str = "cond";
+pub const ATTR_COND: &str = "cond";
 pub const TAG_EVENT: &str = "event";
 pub const TAG_TYPE: &str = "type";
 pub const TAG_ON_ENTRY: &str = "onentry";
@@ -766,7 +766,7 @@ impl ReaderState {
             t.events = event.unwrap().split_whitespace().map(|s| { s.to_string() }).collect();
         }
 
-        let cond = attr.get(TAG_COND);
+        let cond = attr.get(ATTR_COND);
         if cond.is_some() {
             t.cond = Some(cond.unwrap().clone());
         }
@@ -927,7 +927,7 @@ impl ReaderState {
     fn start_if(&mut self, attr: &AttributeMap) {
         self.verify_parent_tag(TAG_IF, &[TAG_ON_ENTRY, TAG_ON_EXIT, TAG_TRANSITION, TAG_FOR_EACH, TAG_IF, TAG_FINALIZE]);
 
-        let ec_if = If::new(Self::get_required_attr(TAG_IF, TAG_COND, attr));
+        let ec_if = If::new(Self::get_required_attr(TAG_IF, ATTR_COND, attr));
         self.add_executable_content(Box::new(ec_if));
         let if_id = self.current_executable_content;
 
@@ -962,7 +962,7 @@ impl ReaderState {
         let else_id = self.current_executable_content;
 
         // Add new "if"
-        let else_if = If::new(Self::get_required_attr(TAG_IF, TAG_COND, attr));
+        let else_if = If::new(Self::get_required_attr(TAG_IF, ATTR_COND, attr));
         self.add_executable_content(Box::new(else_if));
 
         let else_if_content_id = self.start_executable_content_region(true, TAG_ELSEIF);
