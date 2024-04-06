@@ -124,7 +124,7 @@ pub struct SendParameters {
     pub targetexpr: String,
     pub type_value: String,
     pub typeexpr: String,
-    pub delay: String,
+    pub delay_ms: u64,
     pub delayexpr: String,
     pub name_list: String,
 
@@ -416,7 +416,7 @@ impl SendParameters {
             targetexpr: "".to_string(),
             type_value: "".to_string(),
             typeexpr: "".to_string(),
-            delay: "".to_string(),
+            delay_ms: 0,
             delayexpr: "".to_string(),
             name_list: "".to_string(),
             content: "".to_string(),
@@ -469,41 +469,37 @@ impl ExecutableContent for SendParameters {
         {
             datamodel.global().internalQueue.enqueue(Event::error("execution"));
         } else {
-            let delay;
+            let delay_ms;
             if !self.delayexpr.is_empty() {
-                delay = datamodel.execute(fsm, &self.delayexpr);
+                let delay = datamodel.execute(fsm, &self.delayexpr);
+                delay_ms = parse_duration_to_millies(&delay);
             } else {
-                delay = self.delay.clone();
+                delay_ms = self.delay_ms as i64;
             }
-            if delay.is_empty() {
-                todo!()
+            if target.eq(TARGET_INTERNAL) {
+                // Can't send timers via internal queue
+                datamodel.global().internalQueue.enqueue(Event::error("execution"));
             } else {
-                if target.eq(TARGET_INTERNAL) {
-                    // Can't send timers via internal queue
+                if delay_ms < 0
+                {
+                    // Delay is invalid
                     datamodel.global().internalQueue.enqueue(Event::error("execution"));
                 } else {
-                    let delay_ms = parse_duration_to_millies(&delay);
-                    if delay_ms <= 0
-                    {
-                        // Delay is invalid
-                        datamodel.global().internalQueue.enqueue(Event::error("execution"));
-                    } else {
-                        fsm.schedule(delay_ms, move || {
-                            // @TODO: fill all fields correctly!
-                            let event = Box::new(Event {
-                                name: event_name.clone(),
-                                etype: EventType::external,
-                                sendid: 0,
-                                origin: "".to_string(),
-                                origintype: "".to_string(),
-                                invokeid: 0,
-                                data: None,
-                            });
-                            println!(" Send {}", event.name);
-                            let _ignored = sender.send(event);
+                    fsm.schedule(delay_ms, move || {
+                        // @TODO: fill all fields correctly!
+                        let event = Box::new(Event {
+                            name: event_name.clone(),
+                            etype: EventType::external,
+                            sendid: 0,
+                            origin: "".to_string(),
+                            origintype: "".to_string(),
+                            invokeid: 0,
+                            data: None,
                         });
-                        println!("Scheduled Send (delay {}ms)", delay_ms);
-                    }
+                        println!(" Send {}", event.name);
+                        let _ignored = sender.send(event);
+                    });
+                    println!("Scheduled Send (delay {}ms)", delay_ms);
                 }
             }
         }
@@ -523,7 +519,7 @@ impl ExecutableContent for SendParameters {
             ("targetexpr", &self.targetexpr),
             ("type", &self.type_value),
             ("typeexpr", &self.typeexpr),
-            ("delay", &self.delay),
+            ("delay", &self.delay_ms.to_string()),
             ("delayexpr", &self.delayexpr),
             ("name_list", &self.name_list),
             ("content", &self.content)
@@ -559,38 +555,41 @@ pub fn parse_duration_to_millies(d: &String) -> i64 {
     lazy_static! {
         static ref DURATION_RE: Regex = Regex::new(r"^(\d*(\.\d+)?)(MS|S|M|H|D|ms|s|m|h|d)$").unwrap();
     }
-
-    let caps = DURATION_RE.captures(d);
-    if caps.is_none() {
-        -1
+    if d.is_empty() {
+        0
     } else {
-        let cap = caps.unwrap();
-        let value = cap.get(1).map_or("", |m| m.as_str());
-        let unit = cap.get(3).map_or("", |m| m.as_str());
-
-        if value.is_empty() {
+        let caps = DURATION_RE.captures(d);
+        if caps.is_none() {
             -1
         } else {
-            let mut v: f64 = value.parse::<f64>().unwrap();
-            match unit {
-                "D" | "d" => {
-                    v = v * 24.0 * 60.0 * 60.0 * 1000.0;
+            let cap = caps.unwrap();
+            let value = cap.get(1).map_or("", |m| m.as_str());
+            let unit = cap.get(3).map_or("", |m| m.as_str());
+
+            if value.is_empty() {
+                0
+            } else {
+                let mut v: f64 = value.parse::<f64>().unwrap();
+                match unit {
+                    "D" | "d" => {
+                        v = v * 24.0 * 60.0 * 60.0 * 1000.0;
+                    }
+                    "H" | "h" => {
+                        v = v * 60.0 * 60.0 * 1000.0;
+                    }
+                    "M" | "m" => {
+                        v = v * 60000.0;
+                    }
+                    "S" | "s" => {
+                        v = v * 1000.0;
+                    }
+                    "MS" | "ms" => {}
+                    _ => {
+                        return -1;
+                    }
                 }
-                "H" | "h" => {
-                    v = v * 60.0 * 60.0 * 1000.0;
-                }
-                "M" | "m" => {
-                    v = v * 60000.0;
-                }
-                "S" | "s" => {
-                    v = v * 1000.0;
-                }
-                "MS" | "ms" => {}
-                _ => {
-                    return -1;
-                }
+                v.round() as i64
             }
-            v.round() as i64
         }
     }
 }

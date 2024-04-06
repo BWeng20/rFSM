@@ -6,15 +6,15 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::str::FromStr;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use log::debug;
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::events::attributes::Attributes;
 use quick_xml::Reader;
 
-use crate::executable_content::{Assign, Cancel, ExecutableContent, Expression, ForEach, get_opt_executable_content_as, get_safe_executable_content_as, If, Log, Raise, SendParameters, TARGET_SCXMLEVENT_PROCESSOR};
+use crate::executable_content::{Assign, Cancel, ExecutableContent, Expression, ForEach, get_opt_executable_content_as, get_safe_executable_content_as, If, Log, parse_duration_to_millies, Raise, SendParameters, TARGET_SCXMLEVENT_PROCESSOR};
 use crate::fsm::{BindingType, DoneData, ExecutableContentId, ExpressionData, Fsm, HistoryType, ID_COUNTER, Invoke, map_history_type, map_transition_type, SimpleData, SrcData, State, StateId, Transition, TransitionId, TransitionType};
 use crate::fsm::vecToString;
 
@@ -1095,7 +1095,12 @@ impl ReaderState {
             if (!delay_attr.unwrap().is_empty()) && type_attr.is_some() && type_attr.unwrap().eq(TARGET_INTERNAL) {
                 panic!("{}: {} with {} {} is not possible", TAG_SEND, ATTR_DELAY, ATTR_TARGET, type_attr.unwrap());
             }
-            send_params.delay = delay_attr.unwrap().clone();
+            let delayms = parse_duration_to_millies(delay_attr.unwrap());
+            if delayms < 0 {
+                panic!("{}: {} with illegal value '{}'", TAG_SEND, ATTR_DELAY, delay_attr.unwrap());
+            } else {
+                send_params.delay_ms = delayms as u64;
+            }
         }
 
         let name_list = attr.get(ATTR_NAMELIST);

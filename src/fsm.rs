@@ -643,7 +643,7 @@ impl Invoke {
             autoforward: false,
             content: "".to_string(),
             content_expr: "".to_string(),
-            finalize: 0
+            finalize: 0,
         }
     }
 }
@@ -2426,9 +2426,13 @@ impl Fsm {
         l
     }
 
-    pub fn schedule<F>(&self, delay_ms: i64, cb: F)
+    pub fn schedule<F>(&self, delay_ms: i64, mut cb: F)
         where F: 'static + FnMut() + Send {
-        self.timer.schedule_with_delay(chrono::Duration::milliseconds(delay_ms), cb).ignore();
+        if delay_ms > 0 {
+            self.timer.schedule_with_delay(chrono::Duration::milliseconds(delay_ms as i64), cb).ignore();
+        } else {
+            cb();
+        }
     }
 }
 
