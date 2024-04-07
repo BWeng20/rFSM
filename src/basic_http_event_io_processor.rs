@@ -4,13 +4,13 @@ use std::{
 };
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::net::SocketAddr;
+use std::net::{SocketAddr, TcpStream};
 use std::sync::{Arc, atomic::AtomicBool, mpsc::Sender};
 use std::sync::atomic::Ordering;
 use std::thread;
 use std::thread::JoinHandle;
 
-use log::info;
+use log::{debug, info, log_enabled};
 
 use crate::datamodel::BASIC_HTTP_EVENT_PROCESSOR;
 /// See https://www.w3.org/TR/scxml/#BasicHTTPEventProcessor
@@ -19,38 +19,44 @@ use crate::event_io_processor::{EventIOProcessor, EventIOProcessorHandle};
 use crate::fsm::Event;
 
 #[derive(Debug)]
-pub struct BasicHTTPEventProcessor {
+pub struct BasicHTTPEventIOProcessor {
     pub location: String,
     pub server_thread: Option<JoinHandle<()>>,
     pub terminate_flag: Arc<AtomicBool>,
-
+    pub local_adr: SocketAddr,
     pub fsms: HashMap<String, Sender<Box<Event>>>,
 }
 
-impl BasicHTTPEventProcessor {
+impl BasicHTTPEventIOProcessor {
+    pub fn new(addr: &SocketAddr) -> BasicHTTPEventIOProcessor {
+        let listener = TcpListener::bind(addr).unwrap();
+        let local_addr = listener.local_addr().unwrap();
+        let terminate_flag = Arc::new(AtomicBool::new(false));
 
-    pub fn terminate(&mut self) {
-        self.terminate_flag.as_ref().store(true, Ordering::Relaxed);
-    }
+        let inner_terminate_flag = terminate_flag.clone();
 
-    pub fn new() -> BasicHTTPEventProcessor {
         let thread = thread::Builder::new().name("fsm_http_io_proc".to_string()).spawn(
             move || {
-                info!("HTTP server starting...");
+                info!("HTTP Event IO Processor starting...");
                 {
-                    let addr = SocketAddr::from(([127, 0, 0, 1], 5555));
-                    let listener = TcpListener::bind(addr).unwrap();
-
                     loop {
                         let accepted = listener.accept();
                         match accepted {
                             Ok((stream, _addr)) => {
-                                println!("Connection from {:?}", stream.peer_addr());
+                                if inner_terminate_flag.load(Ordering::Relaxed)
+                                {
+                                    info!("Terminating HTTP Event IO Processor");
+                                    break;
+                                }
+                                debug!("Connection from {:?}", stream.peer_addr());
 
                                 let buf_reader = BufReader::new(stream);
-                                println!("Request:");
-                                for line in buf_reader.lines() {
-                                    println!(" {}", line.unwrap());
+
+                                if log_enabled!(log::Level::Debug) {
+                                    debug!("Request:");
+                                    for line in buf_reader.lines() {
+                                        debug!(" {}", line.unwrap());
+                                    }
                                 }
                             }
                             Err(_) => {
@@ -62,19 +68,20 @@ impl BasicHTTPEventProcessor {
                 info!("HTTP server finished");
             });
 
-        let e = BasicHTTPEventProcessor
+        let e = BasicHTTPEventIOProcessor
         {
             location: "https://localhost:5555".to_string(),
             server_thread: Some(thread.unwrap()),
-            terminate_flag: Arc::new(AtomicBool::new(false)),
+            terminate_flag: terminate_flag,
             fsms: HashMap::new(),
+            local_adr: local_addr,
         };
         e
     }
 }
 
 
-impl EventIOProcessor for BasicHTTPEventProcessor {
+impl EventIOProcessor for BasicHTTPEventIOProcessor {
     fn get_location(&self) -> &str {
         self.location.as_str()
     }
@@ -89,12 +96,19 @@ impl EventIOProcessor for BasicHTTPEventProcessor {
     }
 
     fn get_copy(&self) -> Box<dyn EventIOProcessor> {
-        let b = BasicHTTPEventProcessor {
+        let b = BasicHTTPEventIOProcessor {
             location: self.location.clone(),
             server_thread: None,
             terminate_flag: self.terminate_flag.clone(),
             fsms: self.fsms.clone(),
+            local_adr: self.local_adr.clone(),
         };
         Box::new(b)
+    }
+
+    fn shutdown(&self) {
+        info!("HTTP Event IO Processor shutdown...");
+        self.terminate_flag.as_ref().store(true, Ordering::Relaxed);
+        let _ = TcpStream::connect(self.local_adr);
     }
 }

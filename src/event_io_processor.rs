@@ -30,5 +30,7 @@ pub trait EventIOProcessor: ToAny + Debug + Send {
     }
 
     fn get_copy(&self) -> Box<dyn EventIOProcessor>;
+
+    fn shutdown(&self);
 }
 

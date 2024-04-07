@@ -5,10 +5,11 @@ extern crate core;
 
 use std::{env, io, process, thread, time};
 use std::io::{stdout, Write};
+use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::mpsc::Sender;
 
-use crate::basic_http_event_io_processor::BasicHTTPEventProcessor;
+use crate::basic_http_event_io_processor::BasicHTTPEventIOProcessor;
 use crate::event_io_processor::EventIOProcessor;
 use crate::fsm::{Event, EventType, Trace};
 
@@ -97,7 +98,7 @@ fn main() {
     let mut processors: Vec<Box<dyn EventIOProcessor>> = Vec::new();
 
     #[cfg(feature = "BasicHttpEventIOProcessor")]
-    processors.push(Box::new(BasicHTTPEventProcessor::new()));
+    processors.push(Box::new(BasicHTTPEventIOProcessor::new(&SocketAddr::from(([127, 0, 0, 1], 5555)))));
 
     // Use reader to parse the scxml file:
     match reader::read_from_xml_file(final_args[0].clone()) {
@@ -117,8 +118,15 @@ fn main() {
 
                 // If FSM was reached final state(s) the worker thread will be finished.
                 if thread_handle.is_finished() {
-                    print!("\nSM finished!");
+                    println!("\nSM finished!");
+
+                    for p in processors
+                    {
+                        p.shutdown();
+                    }
+
                     // TODO: dump data from the "finish"
+
                     process::exit(0);
                 } else {
                     print!("\nEnter Event >>");
