@@ -8,6 +8,8 @@ use std::io::{stdout, Write};
 use std::str::FromStr;
 use std::sync::mpsc::Sender;
 
+use crate::basic_http_event_io_processor::BasicHTTPEventProcessor;
+use crate::event_io_processor::EventIOProcessor;
 use crate::fsm::{Event, EventType, Trace};
 
 pub mod reader;
@@ -16,6 +18,12 @@ pub mod executable_content;
 
 #[cfg(feature = "ECMAScript")]
 pub mod ecma_script_datamodel;
+
+#[cfg(feature = "BasicHttpEventIOProcessor")]
+pub mod basic_http_event_io_processor;
+
+mod datamodel;
+mod event_io_processor;
 
 fn handle_trace(sender: &mut Sender<Box<Event>>, opt: &str, enable: bool) {
     match Trace::from_str(opt) {
@@ -86,12 +94,17 @@ fn main() {
 
     println!("Loading FSM from {}", final_args[0]);
 
+    let mut processors: Vec<Box<dyn EventIOProcessor>> = Vec::new();
+
+    #[cfg(feature = "BasicHttpEventIOProcessor")]
+    processors.push(Box::new(BasicHTTPEventProcessor::new()));
+
     // Use reader to parse the scxml file:
     match reader::read_from_xml_file(final_args[0].clone()) {
         Ok(mut sm) => {
             // Use reader to parse the scxml file:
-            sm.tracer.enableTrace(trace);
-            let (thread_handle, mut sender) = fsm::start_fsm(sm);
+            sm.tracer.enable_trace(trace);
+            let (thread_handle, mut sender) = fsm::start_fsm(sm, &processors);
 
             let mut line = String::new();
             let stdin = io::stdin();
@@ -130,7 +143,7 @@ fn main() {
                                 let event = Box::new(Event {
                                     name: line.clone(),
                                     etype: EventType::platform,
-                                    sendid: 0,
+                                    sendid: empty_str.clone(),
                                     origin: empty_str.clone(),
                                     origintype: empty_str.clone(),
                                     invokeid: 1,

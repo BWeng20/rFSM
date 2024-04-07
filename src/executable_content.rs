@@ -1,7 +1,6 @@
 //! Implementation of "executable content" elements
 //! See [W3C:Executable Content](https://www.w3.org/TR/scxml/#executable)
 
-use std::any::Any;
 use std::fmt::{Debug, Formatter};
 
 use lazy_static::lazy_static;
@@ -9,7 +8,8 @@ use log::{info, warn};
 use regex::Regex;
 
 use crate::{Event, EventType};
-use crate::fsm::{Datamodel, ExecutableContentId, Fsm};
+use crate::datamodel::{Datamodel, SCXML_EVENT_PROCESSOR, ToAny};
+use crate::fsm::{ExecutableContentId, Fsm};
 
 pub const TARGET_INTERNAL: &str = "_internal";
 pub const TARGET_SCXMLEVENT_PROCESSOR: &str = "http://www.w3.org/TR/scxml/#SCXMLEventProcessor";
@@ -24,16 +24,6 @@ pub const TYPE_RAISE: &str = "raise";
 pub const TYPE_CANCEL: &str = "cancel";
 pub const TYPE_ASSIGN: &str = "assign";
 
-pub trait ToAny: 'static {
-    fn as_any(&mut self) -> &mut dyn Any;
-}
-
-impl<T: Debug + 'static> ToAny for T {
-    fn as_any(&mut self) -> &mut dyn Any {
-        self
-    }
-}
-
 pub trait ExecutableContent: ToAny + Debug + Send {
     fn execute(&self, datamodel: &mut dyn Datamodel, fsm: &Fsm);
     fn get_type(&self) -> &str;
@@ -42,7 +32,7 @@ pub trait ExecutableContent: ToAny + Debug + Send {
 
 pub fn get_safe_executable_content_as<T: 'static>(ec: &mut dyn ExecutableContent) -> &mut T {
     let va = ec.as_any();
-    match (*va).downcast_mut::<T>() {
+    match va.downcast_mut::<T>() {
         Some(v) => {
             v
         }
@@ -55,7 +45,7 @@ pub fn get_safe_executable_content_as<T: 'static>(ec: &mut dyn ExecutableContent
 
 pub fn get_executable_content_as<T: 'static>(ec: &mut dyn ExecutableContent) -> Option<&mut T> {
     let va = ec.as_any();
-    match (*va).downcast_mut::<T>() {
+    match va.downcast_mut::<T>() {
         Some(v) => {
             Some(v)
         }
@@ -327,7 +317,7 @@ impl If {
 
 impl ExecutableContent for If {
     fn execute(&self, datamodel: &mut dyn Datamodel, fsm: &Fsm) {
-        match datamodel.executeCondition(fsm, &self.condition) {
+        match datamodel.execute_condition(fsm, &self.condition) {
             Ok(r) => {
                 if r {
                     if self.content != 0 {
@@ -383,7 +373,7 @@ impl ExecutableContent for ForEach {
         } else {
             self.index.clone()
         };
-        datamodel.executeForEach(fsm, &self.array, &self.item, &idx, &mut |datamodel| {
+        datamodel.execute_for_each(fsm, &self.array, &self.item, &idx, &mut |datamodel| {
             if self.content != 0 {
                 for e in fsm.executableContent.get(&self.content).unwrap() {
                     e.execute(datamodel, fsm);
@@ -463,6 +453,14 @@ impl ExecutableContent for SendParameters {
             event_name = self.event.clone();
         };
 
+        let sendid;
+
+        if self.namelocation.is_empty() {
+            sendid = self.name.clone();
+        } else {
+            sendid = datamodel.execute(fsm, &self.namelocation);
+        }
+
         let sender = datamodel.global().externalQueue.sender.clone();
 
         if target.is_empty()
@@ -485,13 +483,17 @@ impl ExecutableContent for SendParameters {
                     // Delay is invalid
                     datamodel.global().internalQueue.enqueue(Event::error("execution"));
                 } else {
+                    let location =
+                        datamodel.get_io_processors().get_mut(SCXML_EVENT_PROCESSOR).map_or(
+                            "".to_string(),
+                            |ioprocessor| ioprocessor.get_location().to_string());
                     fsm.schedule(delay_ms, move || {
                         // @TODO: fill all fields correctly!
                         let event = Box::new(Event {
                             name: event_name.clone(),
                             etype: EventType::external,
-                            sendid: 0,
-                            origin: "".to_string(),
+                            sendid: sendid.clone(),
+                            origin: location.clone(),
                             origintype: "".to_string(),
                             invokeid: 0,
                             data: None,

@@ -14,9 +14,10 @@ use quick_xml::events::{BytesStart, Event};
 use quick_xml::events::attributes::Attributes;
 use quick_xml::Reader;
 
+use crate::datamodel::SimpleData;
 use crate::executable_content::{Assign, Cancel, ExecutableContent, Expression, ForEach, get_opt_executable_content_as, get_safe_executable_content_as, If, Log, parse_duration_to_millies, Raise, SendParameters, TARGET_SCXMLEVENT_PROCESSOR};
-use crate::fsm::{BindingType, DoneData, ExecutableContentId, ExpressionData, Fsm, HistoryType, ID_COUNTER, Invoke, map_history_type, map_transition_type, SimpleData, SrcData, State, StateId, Transition, TransitionId, TransitionType};
-use crate::fsm::vecToString;
+use crate::fsm::{BindingType, DoneData, ExecutableContentId, ExpressionData, Fsm, HistoryType, ID_COUNTER, Invoke, map_history_type, map_transition_type, SrcData, State, StateId, Transition, TransitionId, TransitionType};
+use crate::fsm::vec_to_string;
 
 pub type AttributeMap = HashMap<String, String>;
 pub type XReader<'a> = Reader<&'a [u8]>;
@@ -513,7 +514,7 @@ impl ReaderState {
                 t.source = id;
                 initial = t.id;
                 self.parse_state_specification(id_refs, &mut t.target);
-                debug!(" {}#{}.initial = {} -> {}", sname, id, initial, vecToString(&t.target));
+                debug!(" {}#{}.initial = {} -> {}", sname, id, initial, vec_to_string(&t.target));
                 self.fsm.transitions.insert(t.id, t);
             }
         }

@@ -182,6 +182,9 @@ Standard. So don't expect to have 100% JavaScript here.
 
 You can check the requirements for ECMA in SCXML [here](https://www.w3.org/TR/scxml/#ecma-profile)
 
+Names from the W3C pseudo-code-algorithm are kept were feasible and not converted to Rust-like snake case.
+These methods are marked with "_#[allow(non_snake_case)]_" to suppress warnings.
+
 ### Not conformant or not implemented features of the W3C recommendation
 
 + XML inside &lt;content> is not handled accoring to _[content_and_namespaces](https://www.w3.org/TR/scxml/#content_and_namespaces)_. The content inside &lt;content> is not

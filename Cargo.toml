@@ -4,9 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["ECMAScript", "EnvLog"]
+default = ["ECMAScript", "EnvLog", "BasicHttpEventIOProcessor"]
 ECMAScript = ["boa_engine"]
 EnvLog = ["env_logger"]
+BasicHttpEventIOProcessor = ["hyper"]
 
 [dependencies]
 log = "0.4.0"
@@ -18,6 +19,7 @@ quick-xml = { version = "0.27.1", features = ["serialize"] }
 boa_engine = { version = "0.16.0", optional = true }
 env_logger = { version = "0.9.0", optional = true }
 reqwest = { version = "0.11", features = ["blocking", "json"] }
+hyper = { version = "1.0.0", features = ["http2", "client", "server"], optional = true }
 
 [profile.dev.package."*"]
 opt-level = "z"
