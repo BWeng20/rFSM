@@ -106,9 +106,17 @@ impl EventIOProcessor for BasicHTTPEventIOProcessor {
         Box::new(b)
     }
 
-    fn shutdown(&self) {
+    fn shutdown(&mut self) {
         info!("HTTP Event IO Processor shutdown...");
         self.terminate_flag.as_ref().store(true, Ordering::Relaxed);
         let _ = TcpStream::connect(self.local_adr);
+        let t = std::mem::replace(&mut self.server_thread, None);
+        match t
+        {
+            Some(t) => {
+                _ = t.join();
+            }
+            _ => {}
+        }
     }
 }

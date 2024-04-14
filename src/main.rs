@@ -120,7 +120,7 @@ fn main() {
                 if thread_handle.is_finished() {
                     println!("\nSM finished!");
 
-                    for p in processors
+                    for mut p in processors
                     {
                         p.shutdown();
                     }
