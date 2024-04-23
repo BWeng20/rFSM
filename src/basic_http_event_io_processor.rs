@@ -1,16 +1,19 @@
-use std::{
-    io::{BufReader, prelude::*},
-    net::TcpListener,
-};
+use std::borrow::Cow;
 use std::collections::HashMap;
+use std::convert::Infallible;
 use std::fmt::Debug;
 use std::net::{SocketAddr, TcpStream};
 use std::sync::{Arc, atomic::AtomicBool, mpsc::Sender};
 use std::sync::atomic::Ordering;
-use std::thread;
-use std::thread::JoinHandle;
 
-use log::{debug, info, log_enabled};
+use http_body_util::Full;
+use hyper::{Request, Response};
+use hyper::body::Bytes;
+use hyper::server::conn::http1;
+use hyper::service::service_fn;
+use hyper_util::rt::TokioIo;
+use log::{error, info};
+use tokio::net::TcpListener;
 
 use crate::datamodel::BASIC_HTTP_EVENT_PROCESSOR;
 /// See https://www.w3.org/TR/scxml/#BasicHTTPEventProcessor
@@ -18,63 +21,105 @@ use crate::datamodel::BASIC_HTTP_EVENT_PROCESSOR;
 use crate::event_io_processor::{EventIOProcessor, EventIOProcessorHandle};
 use crate::fsm::Event;
 
+pub const SCXML_EVENT_NAME: &str = "_scxmleventname";
+
 #[derive(Debug)]
 pub struct BasicHTTPEventIOProcessor {
     pub location: String,
-    pub server_thread: Option<JoinHandle<()>>,
     pub terminate_flag: Arc<AtomicBool>,
     pub local_adr: SocketAddr,
     pub fsms: HashMap<String, Sender<Box<Event>>>,
 }
 
+async fn handle_request(request: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
+    info!("Method {:?}", request.method() );
+    info!("Header {:?}", request.headers() );
+    info!("Body {:?}", request.body() );
+    info!("Uri {:?}", request.uri() );
+
+    // Path without leading "/" addresses the session to notify.
+    let mut path = request.uri().path().to_string();
+    if path.starts_with("/") {
+        path.remove(0);
+    }
+    info!("Path {:?}", path );
+
+    let mut query_params: HashMap<Cow<str>, Cow<str>> =
+        match request.uri().query() {
+            None => {
+                HashMap::new()
+            }
+            Some(query_s) => {
+                form_urlencoded::parse(query_s.as_bytes()).collect()
+            }
+        };
+    info!("Query Parameters {:?}", query_params );
+
+    let event_name =
+        match query_params.get(SCXML_EVENT_NAME) {
+            None => {
+                ""
+            }
+            Some(event_name) => {
+                event_name
+            }
+        };
+
+    info!("Event Name {:?}", event_name );
+
+    Ok(Response::new(Full::new(Bytes::from("Hello, World!"))))
+}
+
 impl BasicHTTPEventIOProcessor {
     pub fn new(addr: &SocketAddr) -> BasicHTTPEventIOProcessor {
-        let listener = TcpListener::bind(addr).unwrap();
-        let local_addr = listener.local_addr().unwrap();
         let terminate_flag = Arc::new(AtomicBool::new(false));
-
         let inner_terminate_flag = terminate_flag.clone();
+        let inner_addr = addr.clone();
 
-        let thread = thread::Builder::new().name("fsm_http_io_proc".to_string()).spawn(
-            move || {
-                info!("HTTP Event IO Processor starting...");
-                {
-                    loop {
-                        let accepted = listener.accept();
-                        match accepted {
-                            Ok((stream, _addr)) => {
-                                if inner_terminate_flag.load(Ordering::Relaxed)
-                                {
-                                    info!("Terminating HTTP Event IO Processor");
-                                    break;
-                                }
-                                debug!("Connection from {:?}", stream.peer_addr());
+        info!("HTTP server starting");
 
-                                let buf_reader = BufReader::new(stream);
+        let thread =
+            tokio::task::spawn(async move {
+                match TcpListener::bind(inner_addr).await {
+                    Ok(listener) => {
+                        info!("HTTP Event IO Processor listening at {:?}", inner_addr );
 
-                                if log_enabled!(log::Level::Debug) {
-                                    debug!("Request:");
-                                    for line in buf_reader.lines() {
-                                        debug!(" {}", line.unwrap());
+                        loop {
+                            match listener.accept().await {
+                                Ok((stream, _)) => {
+                                    if inner_terminate_flag.load(Ordering::Relaxed) {
+                                        break;
                                     }
+                                    info!("HTTP accept" );
+                                    let io = TokioIo::new(stream);
+                                    tokio::task::spawn(async move {
+                                        if let Err(err) = http1::Builder::new()
+                                            // `service_fn` converts our function in a `Service`
+                                            .serve_connection(io, service_fn(handle_request))
+                                            .await
+                                        {
+                                            error!("Error serving connection: {:?}", err);
+                                        }
+                                    });
                                 }
-                            }
-                            Err(_) => {
-                                break;
+                                Err(err) => {
+                                    error!("Error accepting connection: {:?}", err);
+                                }
                             }
                         }
+                        info!("HTTP server finished");
+                    }
+                    Err(e) => {
+                        error!("HTTP Event IO Processor error {:?} listening at {:?}", e, inner_addr );
                     }
                 }
-                info!("HTTP server finished");
             });
-
         let e = BasicHTTPEventIOProcessor
         {
             location: "https://localhost:5555".to_string(),
-            server_thread: Some(thread.unwrap()),
-            terminate_flag: terminate_flag,
+            terminate_flag,
             fsms: HashMap::new(),
-            local_adr: local_addr,
+            local_adr: addr.clone(),
         };
         e
     }
@@ -98,7 +143,6 @@ impl EventIOProcessor for BasicHTTPEventIOProcessor {
     fn get_copy(&self) -> Box<dyn EventIOProcessor> {
         let b = BasicHTTPEventIOProcessor {
             location: self.location.clone(),
-            server_thread: None,
             terminate_flag: self.terminate_flag.clone(),
             fsms: self.fsms.clone(),
             local_adr: self.local_adr.clone(),
@@ -110,13 +154,5 @@ impl EventIOProcessor for BasicHTTPEventIOProcessor {
         info!("HTTP Event IO Processor shutdown...");
         self.terminate_flag.as_ref().store(true, Ordering::Relaxed);
         let _ = TcpStream::connect(self.local_adr);
-        let t = std::mem::replace(&mut self.server_thread, None);
-        match t
-        {
-            Some(t) => {
-                _ = t.join();
-            }
-            _ => {}
-        }
     }
 }

@@ -46,7 +46,8 @@ fn handle_trace(sender: &mut Sender<Box<Event>>, opt: &str, enable: bool) {
 }
 
 /// Loads the specified FSM and prompts for Events.
-fn main() {
+#[tokio::main]
+async fn main() {
     env_logger::init();
 
     // Default for trace option.
@@ -98,7 +99,10 @@ fn main() {
     let mut processors: Vec<Box<dyn EventIOProcessor>> = Vec::new();
 
     #[cfg(feature = "BasicHttpEventIOProcessor")]
-    processors.push(Box::new(BasicHTTPEventIOProcessor::new(&SocketAddr::from(([127, 0, 0, 1], 5555)))));
+    {
+        let w = Box::new(BasicHTTPEventIOProcessor::new(&SocketAddr::from(([127, 0, 0, 1], 5555))));
+        processors.push(w);
+    }
 
     // Use reader to parse the scxml file:
     match reader::read_from_xml_file(final_args[0].clone()) {
@@ -126,8 +130,7 @@ fn main() {
                     }
 
                     // TODO: dump data from the "finish"
-
-                    process::exit(0);
+                    break;
                 } else {
                     print!("\nEnter Event >>");
                     match stdout().flush() {
@@ -188,7 +191,6 @@ fn main() {
         }
         Err(e) => {
             eprintln!("Failed to open {} error {}", args[0], e);
-            process::exit(2);
         }
     }
 }
