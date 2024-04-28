@@ -43,6 +43,12 @@ erDiagram
 
     Datamodel {
     }
+    
+    EventIOProcessor {
+    }
+
+    BasicHTTPEventIOProcessor {
+    }
 
     XML }o--|| reader : parse
     XML {
@@ -50,7 +56,9 @@ erDiagram
 
     reader ||--o{ Fsm : creates   
 
-    Fsm ||--|| Datamodel : owns
+    Fsm ||..|| Datamodel : owns
+    Datamodel ||..}o EventIOProcessor : owns
+    BasicHTTPEventIOProcessor ||--|| EventIOProcessor: implements
     
     ECMAScript ||--|| Datamodel : implements
     NullDatamodel ||--|| Datamodel : implements
@@ -114,7 +122,7 @@ classDiagram
     Transition  --> "0..n" State : Targets
     
     class State {
-    
+   
     }
 
     class Transition {
@@ -171,6 +179,18 @@ classDiagram
     }
       
     reader --> Fsm : Creates 
+    
+    class IOEventProcessor {
+    }
+
+    class HttpIOEventProcessor {
+    }
+    
+    
+    HttpIOEventProcessor ..|> IOEventProcessor
+    
+    Datamodel "1" *-- "0..n" IOEventProcessor 
+    
 ```
 
 The Fsm implements the methods described in the W3C Recommendation. The main loop is executed in a work-thread. The application sends events via a "BlockingQueue" (technical a
