@@ -6,8 +6,8 @@ use std::net::{SocketAddr, TcpStream};
 use std::sync::{Arc, atomic::AtomicBool, mpsc::Sender};
 use std::sync::atomic::Ordering;
 
-use http_body_util::Full;
-use hyper::{Request, Response};
+use http_body_util::{BodyExt, Full};
+use hyper::{Method, Request, Response, StatusCode};
 use hyper::body::Bytes;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
@@ -32,27 +32,55 @@ pub struct BasicHTTPEventIOProcessor {
 }
 
 async fn handle_request(request: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
-    info!("Method {:?}", request.method() );
-    info!("Header {:?}", request.headers() );
-    info!("Body {:?}", request.body() );
-    info!("Uri {:?}", request.uri() );
+    let (parts, body) = request.into_parts();
+    info!("Method {:?}", parts.method);
+    info!("Header {:?}", parts.headers );
+    info!("Uri {:?}", parts.uri );
+
+    let mut path = parts.uri.path().to_string();
 
     // Path without leading "/" addresses the session to notify.
-    let mut path = request.uri().path().to_string();
     if path.starts_with("/") {
         path.remove(0);
     }
     info!("Path {:?}", path );
+    if path.is_empty() {
+        return Ok(Response::builder().status(StatusCode::BAD_REQUEST).body(Full::new(Bytes::from("Missing Session Path"))).unwrap());
+    }
 
-    let mut query_params: HashMap<Cow<str>, Cow<str>> =
-        match request.uri().query() {
-            None => {
-                HashMap::new()
+    let query_params: HashMap<Cow<str>, Cow<str>>;
+    let db;
+
+    match parts.method {
+        Method::POST => {
+            // Mantatory POST implementation
+            match body.collect().await {
+                Ok(data) => {
+                    db = data.to_bytes();
+                    query_params = form_urlencoded::parse(db.as_ref()).collect();
+                }
+                Err(_) => {
+                    return Ok(Response::builder().status(StatusCode::BAD_REQUEST).body(Full::new(Bytes::from("No Body"))).unwrap());
+                }
             }
-            Some(query_s) => {
-                form_urlencoded::parse(query_s.as_bytes()).collect()
-            }
-        };
+        }
+        Method::GET => {
+            // Optional GET implementation
+            query_params =
+                match parts.uri.query() {
+                    None => {
+                        HashMap::new()
+                    }
+                    Some(query_s) => {
+                        form_urlencoded::parse(query_s.as_bytes()).collect()
+                    }
+                };
+        }
+        _ => {
+            return Ok(Response::builder().status(StatusCode::BAD_REQUEST).body(Full::new(Bytes::from("POST or GET request expected"))).unwrap());
+        }
+    }
+
     info!("Query Parameters {:?}", query_params );
 
     let event_name =
@@ -66,8 +94,7 @@ async fn handle_request(request: Request<hyper::body::Incoming>) -> Result<Respo
         };
 
     info!("Event Name {:?}", event_name );
-
-    Ok(Response::new(Full::new(Bytes::from("Hello, World!"))))
+    return Ok(Response::new(Full::new(Bytes::from("Send"))));
 }
 
 impl BasicHTTPEventIOProcessor {
