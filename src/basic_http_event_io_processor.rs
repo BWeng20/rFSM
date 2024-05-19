@@ -216,7 +216,7 @@ impl BasicHTTPEventIOProcessor {
         };
         let e = BasicHTTPEventIOProcessor
         {
-            terminate_flag: Arc::<AtomicBool>::new(AtomicBool::new(false)), // terminate_flag,
+            terminate_flag: terminate_flag,
             state: Arc::new(Mutex::new(state)),
         };
         e
