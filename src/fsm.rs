@@ -23,16 +23,18 @@ use crate::datamodel::{Data, Datamodel, DataStore, NULL_DATAMODEL, NULL_DATAMODE
 use crate::ecma_script_datamodel::{ECMA_SCRIPT_LC, ECMAScriptDatamodel};
 use crate::event_io_processor::EventIOProcessor;
 use crate::executable_content::ExecutableContent;
+use crate::fsm_executor::SystemState;
 
 /// Starts the FSM inside a worker thread.
 ///
-pub fn start_fsm(mut sm: Box<Fsm>, processors: &Vec<Box<dyn EventIOProcessor>>) -> (JoinHandle<()>, Sender<Box<Event>>) {
+pub fn start_fsm(mut sm: Box<Fsm>, executor_state: &Arc<Mutex<SystemState>>) -> (JoinHandle<()>, Sender<Box<Event>>) {
     #![allow(non_snake_case)]
     let externalQueue: BlockingQueue<Box<Event>> = BlockingQueue::new();
     let sender = externalQueue.sender.clone();
 
     let mut vt: Vec<Box<dyn EventIOProcessor>> = Vec::new();
-    for p in processors {
+    let guard = executor_state.lock().unwrap();
+    for p in &guard.processors {
         vt.push(p.get_copy());
     }
 
@@ -506,8 +508,8 @@ pub struct Event {
     pub etype: EventType,
     pub sendid: String,
     pub origin: String,
-    pub origintype: String,
-    pub invokeid: InvokeId,
+    pub origin_type: String,
+    pub invoke_id: InvokeId,
     pub data: Option<DoneData>,
 }
 
@@ -531,8 +533,8 @@ impl Event {
             sendid: "".to_string(),
             origin: "".to_string(),
             data: ev_data.clone(),
-            invokeid: 0,
-            origintype: "".to_string(),
+            invoke_id: 0,
+            origin_type: "".to_string(),
         }
     }
 
@@ -543,8 +545,8 @@ impl Event {
             sendid: "".to_string(),
             origin: "".to_string(),
             data: None,
-            invokeid: 0,
-            origintype: "".to_string(),
+            invoke_id: 0,
+            origin_type: "".to_string(),
         }
     }
 
@@ -555,25 +557,27 @@ impl Event {
             sendid: "".to_string(),
             origin: "".to_string(),
             data: None,
-            invokeid: 0,
-            origintype: "".to_string(),
+            invoke_id: 0,
+            origin_type: "".to_string(),
         }
     }
 
     pub fn get_copy(&self) -> Box<Event> {
         Box::new(Event {
-            invokeid: self.invokeid,
+            invoke_id: self.invoke_id,
             data: self.data.clone(),
             name: self.name.clone(),
             etype: self.etype,
             sendid: self.sendid.clone(),
             origin: self.origin.clone(),
-            origintype: self.origintype.clone(),
+            origin_type: self.origin_type.clone(),
         })
     }
 }
 
 pub type InvokeId = u32;
+
+pub type EventSender = Sender<Box<Event>>;
 
 #[derive(Clone, PartialEq)]
 /// #W3c says:
@@ -749,21 +753,21 @@ pub trait Tracer: Send + Debug {
     /// Called by FSM if an internal event is send
     fn event_internal_send(&self, what: &Event) {
         if self.is_trace(Trace::EVENTS) {
-            self.trace(format!("Int<- {} #{}", what.name, what.invokeid).as_str());
+            self.trace(format!("Int<- {} #{}", what.name, what.invoke_id).as_str());
         }
     }
 
     /// Called by FSM if an internal event is received
     fn event_internal_received(&self, what: &Event) {
         if self.is_trace(Trace::EVENTS) {
-            self.trace(format!("Int-> {} #{}", what.name, what.invokeid).as_str());
+            self.trace(format!("Int-> {} #{}", what.name, what.invoke_id).as_str());
         }
     }
 
     /// Called by FSM if an external event is send
     fn event_external_send(&self, what: &Event) {
         if self.is_trace(Trace::EVENTS) {
-            self.trace(format!("Ext<- {} #{}", what.name, what.invokeid).as_str());
+            self.trace(format!("Ext<- {} #{}", what.name, what.invoke_id).as_str());
         }
     }
 
@@ -793,7 +797,7 @@ pub trait Tracer: Send + Debug {
             }
         }
         if self.is_trace(Trace::EVENTS) {
-            self.trace(format!("Ext-> {} #{}", what.name, what.invokeid).as_str());
+            self.trace(format!("Ext-> {} #{}", what.name, what.invoke_id).as_str());
         }
     }
 
@@ -1351,7 +1355,7 @@ impl Fsm {
             let mut toFinalize: Vec<InvokeId> = Vec::new();
             let mut toForward: Vec<InvokeId> = Vec::new();
             {
-                let invokeId = externalEvent.invokeid;
+                let invokeId = externalEvent.invoke_id;
                 datamodel.set(&"_event".to_string(), externalEvent.get_copy());
                 for sid in datamodel.global().configuration.iterator() {
                     let state = self.get_state_by_id(*sid);
@@ -2777,7 +2781,9 @@ pub fn create_datamodel(name: &str, processors: &Vec<Box<dyn EventIOProcessor>>)
         ECMA_SCRIPT_LC => {
             let mut ecma = Box::new(ECMAScriptDatamodel::new());
             for p in processors {
-                ecma.io_processors.insert(p.as_ref().get_type().to_string(), p.get_copy());
+                for t in p.as_ref().get_types() {
+                    ecma.io_processors.insert(t.to_string(), p.get_copy());
+                }
             }
             ecma
         }
@@ -2864,9 +2870,10 @@ pub(crate) fn vec_to_string<T: Display>(v: &Vec<T>) -> String {
 #[cfg(test)]
 mod tests {
     use std::{thread, time};
+    use std::sync::{Arc, Mutex};
     use std::sync::mpsc::Sender;
 
-    use crate::{Event, EventType, fsm, reader, Trace};
+    use crate::{Event, EventType, fsm, fsm_executor, reader, Trace};
     use crate::fsm::List;
     use crate::fsm::OrderedSet;
 
@@ -3209,9 +3216,9 @@ mod tests {
         let mut fsm = sm.unwrap();
         fsm.tracer.enable_trace(Trace::ALL);
 
-        let processors = Vec::new();
+        let state = Arc::new(Mutex::new(fsm_executor::SystemState::new()));
 
-        let (thread_handle, sender) = fsm::start_fsm(fsm, &processors);
+        let (thread_handle, sender) = fsm::start_fsm(fsm, &state);
 
         let t_millis = time::Duration::from_millis(1000);
         thread::sleep(t_millis);
@@ -3220,8 +3227,8 @@ mod tests {
 
         let empty_str = "".to_string();
 
-        test_send(&sender, Event { name: "ab".to_string(), etype: EventType::platform, sendid: "0".to_string(), origin: empty_str.clone(), origintype: empty_str.clone(), invokeid: 1, data: None });
-        test_send(&sender, Event { name: "exit".to_string(), etype: EventType::platform, sendid: "0".to_string(), origin: empty_str.clone(), origintype: empty_str.clone(), invokeid: 2, data: None });
+        test_send(&sender, Event { name: "ab".to_string(), etype: EventType::platform, sendid: "0".to_string(), origin: empty_str.clone(), origin_type: empty_str.clone(), invoke_id: 1, data: None });
+        test_send(&sender, Event { name: "exit".to_string(), etype: EventType::platform, sendid: "0".to_string(), origin: empty_str.clone(), origin_type: empty_str.clone(), invoke_id: 2, data: None });
 
         // TODO: How to check for timeouts??
         let _r = thread_handle.join();

@@ -12,7 +12,7 @@ use crate::datamodel::{Datamodel, SCXML_EVENT_PROCESSOR, ToAny};
 use crate::fsm::{ExecutableContentId, Fsm};
 
 pub const TARGET_INTERNAL: &str = "_internal";
-pub const TARGET_SCXMLEVENT_PROCESSOR: &str = "http://www.w3.org/TR/scxml/#SCXMLEventProcessor";
+pub const TARGET_SCXML_EVENT_PROCESSOR: &str = "http://www.w3.org/TR/scxml/#SCXMLEventProcessor";
 
 pub const TYPE_IF: &str = "if";
 pub const TYPE_EXPRESSION: &str = "expression";
@@ -105,17 +105,17 @@ pub struct ForEach {
 }
 
 pub struct SendParameters {
-    pub namelocation: String,
+    pub name_location: String,
     /// The SCXML id.
     pub name: String,
     pub event: String,
-    pub eventexpr: String,
+    pub event_expr: String,
     pub target: String,
-    pub targetexpr: String,
+    pub target_expr: String,
     pub type_value: String,
-    pub typeexpr: String,
+    pub type_expr: String,
     pub delay_ms: u64,
-    pub delayexpr: String,
+    pub delay_expr: String,
     pub name_list: String,
 
     /// content inside \<content\> child
@@ -125,8 +125,8 @@ pub struct SendParameters {
 }
 
 pub struct Cancel {
-    pub sendid: String,
-    pub sendidexpr: String,
+    pub send_id: String,
+    pub send_id_expr: String,
 }
 
 pub struct Raise {
@@ -204,8 +204,8 @@ impl ExecutableContent for Raise {
 impl Cancel {
     pub fn new() -> Cancel {
         Cancel {
-            sendid: String::new(),
-            sendidexpr: String::new(),
+            send_id: String::new(),
+            send_id_expr: String::new(),
         }
     }
 }
@@ -213,8 +213,8 @@ impl Cancel {
 impl Debug for Cancel {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Cancel")
-            .field("sendid", &self.sendid)
-            .field("sendidexpr", &self.sendidexpr)
+            .field("send_id", &self.send_id)
+            .field("send_id_expr", &self.send_id_expr)
             .finish()
     }
 }
@@ -398,16 +398,16 @@ impl ExecutableContent for ForEach {
 impl SendParameters {
     pub fn new() -> SendParameters {
         SendParameters {
-            namelocation: "".to_string(),
+            name_location: "".to_string(),
             name: "".to_string(),
             event: "".to_string(),
-            eventexpr: "".to_string(),
+            event_expr: "".to_string(),
             target: "".to_string(),
-            targetexpr: "".to_string(),
+            target_expr: "".to_string(),
             type_value: "".to_string(),
-            typeexpr: "".to_string(),
+            type_expr: "".to_string(),
             delay_ms: 0,
-            delayexpr: "".to_string(),
+            delay_expr: "".to_string(),
             name_list: "".to_string(),
             content: "".to_string(),
             content_expr: "".to_string(),
@@ -423,7 +423,7 @@ impl Debug for SendParameters {
     }
 }
 
-/// Implements the excution of \<send\> element.
+/// Implements the execution of \<send\> element.
 impl ExecutableContent for SendParameters {
     /// If unable to dispatch, place "error.communication" in internal queue
     /// If target is not supported, place "error.execution" in internal queue
@@ -432,8 +432,8 @@ impl ExecutableContent for SendParameters {
         let target;
         if self.target.is_empty()
         {
-            if !self.targetexpr.is_empty() {
-                target = datamodel.execute(fsm, &self.targetexpr);
+            if !self.target_expr.is_empty() {
+                target = datamodel.execute(fsm, &self.target_expr);
             } else {
                 target = "".to_string();
             }
@@ -444,8 +444,8 @@ impl ExecutableContent for SendParameters {
         let event_name;
         if self.event.is_empty()
         {
-            if !self.eventexpr.is_empty() {
-                event_name = datamodel.execute(fsm, &self.eventexpr);
+            if !self.event_expr.is_empty() {
+                event_name = datamodel.execute(fsm, &self.event_expr);
             } else {
                 event_name = "".to_string();
             }
@@ -453,12 +453,12 @@ impl ExecutableContent for SendParameters {
             event_name = self.event.clone();
         };
 
-        let sendid;
+        let send_id;
 
-        if self.namelocation.is_empty() {
-            sendid = self.name.clone();
+        if self.name_location.is_empty() {
+            send_id = self.name.clone();
         } else {
-            sendid = datamodel.execute(fsm, &self.namelocation);
+            send_id = datamodel.execute(fsm, &self.name_location);
         }
 
         let sender = datamodel.global().externalQueue.sender.clone();
@@ -468,9 +468,9 @@ impl ExecutableContent for SendParameters {
             datamodel.global().internalQueue.enqueue(Event::error("execution"));
         } else {
             let delay_ms;
-            if !self.delayexpr.is_empty() {
-                let delay = datamodel.execute(fsm, &self.delayexpr);
-                delay_ms = parse_duration_to_millies(&delay);
+            if !self.delay_expr.is_empty() {
+                let delay = datamodel.execute(fsm, &self.delay_expr);
+                delay_ms = parse_duration_to_milliseconds(&delay);
             } else {
                 delay_ms = self.delay_ms as i64;
             }
@@ -486,16 +486,16 @@ impl ExecutableContent for SendParameters {
                     let location =
                         datamodel.get_io_processors().get_mut(SCXML_EVENT_PROCESSOR).map_or(
                             "".to_string(),
-                            |ioprocessor| ioprocessor.get_location().to_string());
+                            |io_processor| io_processor.get_location().to_string());
                     fsm.schedule(delay_ms, move || {
                         // @TODO: fill all fields correctly!
                         let event = Box::new(Event {
                             name: event_name.clone(),
                             etype: EventType::external,
-                            sendid: sendid.clone(),
+                            sendid: send_id.clone(),
                             origin: location.clone(),
-                            origintype: "".to_string(),
-                            invokeid: 0,
+                            origin_type: "".to_string(),
+                            invoke_id: 0,
                             data: None,
                         });
                         println!(" Send {}", event.name);
@@ -513,16 +513,16 @@ impl ExecutableContent for SendParameters {
 
     fn trace(&self, tracer: &mut dyn ExecutableContentTracer, _fsm: &Fsm) {
         tracer.print_name_and_attributes(self, &[
-            ("namelocation", &self.namelocation),
+            ("name_location", &self.name_location),
             ("name", &self.name),
             ("name", &self.name),
-            ("eventexpr", &self.eventexpr),
+            ("event_expr", &self.event_expr),
             ("target", &self.target),
-            ("targetexpr", &self.targetexpr),
+            ("target_expr", &self.target_expr),
             ("type", &self.type_value),
-            ("typeexpr", &self.typeexpr),
+            ("type_expr", &self.type_expr),
             ("delay", &self.delay_ms.to_string()),
-            ("delayexpr", &self.delayexpr),
+            ("delay_expr", &self.delay_expr),
             ("name_list", &self.name_list),
             ("content", &self.content)
         ]);
@@ -532,28 +532,28 @@ impl ExecutableContent for SendParameters {
 
 #[cfg(test)]
 mod tests {
-    use crate::executable_content::parse_duration_to_millies;
+    use crate::executable_content::parse_duration_to_milliseconds;
 
     #[test]
     fn delay_parse() {
-        assert_eq!(parse_duration_to_millies(&"6.7s".to_string()), 6700);
-        assert_eq!(parse_duration_to_millies(&"0.5d".to_string()), 12 * 60 * 60 * 1000);
-        assert_eq!(parse_duration_to_millies(&"1m".to_string()), 60 * 1000);
-        assert_eq!(parse_duration_to_millies(&"0.001s".to_string()), 1);
-        assert_eq!(parse_duration_to_millies(&"6.7S".to_string()), 6700);
-        assert_eq!(parse_duration_to_millies(&"0.5D".to_string()), 12 * 60 * 60 * 1000);
-        assert_eq!(parse_duration_to_millies(&"1M".to_string()), 60 * 1000);
-        assert_eq!(parse_duration_to_millies(&"0.001S".to_string()), 1);
+        assert_eq!(parse_duration_to_milliseconds(&"6.7s".to_string()), 6700);
+        assert_eq!(parse_duration_to_milliseconds(&"0.5d".to_string()), 12 * 60 * 60 * 1000);
+        assert_eq!(parse_duration_to_milliseconds(&"1m".to_string()), 60 * 1000);
+        assert_eq!(parse_duration_to_milliseconds(&"0.001s".to_string()), 1);
+        assert_eq!(parse_duration_to_milliseconds(&"6.7S".to_string()), 6700);
+        assert_eq!(parse_duration_to_milliseconds(&"0.5D".to_string()), 12 * 60 * 60 * 1000);
+        assert_eq!(parse_duration_to_milliseconds(&"1M".to_string()), 60 * 1000);
+        assert_eq!(parse_duration_to_milliseconds(&"0.001S".to_string()), 1);
 
-        assert_eq!(parse_duration_to_millies(&"x1S".to_string()), -1);
-        assert_eq!(parse_duration_to_millies(&"1Sx".to_string()), -1);
+        assert_eq!(parse_duration_to_milliseconds(&"x1S".to_string()), -1);
+        assert_eq!(parse_duration_to_milliseconds(&"1Sx".to_string()), -1);
     }
 }
 
 
 /// a duration.
 /// RegExp: "\\d*(\\.\\d+)?(ms|s|m|h|d))").
-pub fn parse_duration_to_millies(d: &String) -> i64 {
+pub fn parse_duration_to_milliseconds(d: &String) -> i64 {
     lazy_static! {
         static ref DURATION_RE: Regex = Regex::new(r"^(\d*(\.\d+)?)(MS|S|M|H|D|ms|s|m|h|d)$").unwrap();
     }

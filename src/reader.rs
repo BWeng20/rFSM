@@ -1,4 +1,4 @@
-//! Implememnts a SAX Parser for SCXML documents according to the W3C recommendation.
+//! Implements a SAX Parser for SCXML documents according to the W3C recommendation.
 //! See [W3C:SCXML](https://www.w3.org/TR/scxml/#overview).
 
 use std::{mem, str, string::String};
@@ -14,8 +14,8 @@ use quick_xml::events::{BytesStart, Event};
 use quick_xml::events::attributes::Attributes;
 use quick_xml::Reader;
 
-use crate::datamodel::SimpleData;
-use crate::executable_content::{Assign, Cancel, ExecutableContent, Expression, ForEach, get_opt_executable_content_as, get_safe_executable_content_as, If, Log, parse_duration_to_millies, Raise, SendParameters, TARGET_SCXMLEVENT_PROCESSOR};
+use crate::datamodel::StringData;
+use crate::executable_content::{Assign, Cancel, ExecutableContent, Expression, ForEach, get_opt_executable_content_as, get_safe_executable_content_as, If, Log, parse_duration_to_milliseconds, Raise, SendParameters, TARGET_SCXML_EVENT_PROCESSOR};
 use crate::fsm::{BindingType, DoneData, ExecutableContentId, ExpressionData, Fsm, HistoryType, ID_COUNTER, Invoke, map_history_type, map_transition_type, SrcData, State, StateId, Transition, TransitionId, TransitionType};
 use crate::fsm::vec_to_string;
 
@@ -689,7 +689,7 @@ impl ReaderState {
             }
             self.get_current_state().data.set(id, Box::new(ExpressionData { expr: expr.unwrap().clone() }));
         } else if !content.is_empty() {
-            self.get_current_state().data.set(id, Box::new(SimpleData { value: content.clone() }));
+            self.get_current_state().data.set(id, Box::new(StringData::new(content.to_string().as_str())));
         }
     }
 
@@ -894,9 +894,9 @@ impl ReaderState {
             if sendidexpr.is_some() {
                 panic!("{}: attributes {} and {} must not occur both", TAG_CANCEL, ATTR_SENDID, ATTR_SENDIDEXPR);
             }
-            cancel.sendid = sendid.unwrap().clone();
+            cancel.send_id = sendid.unwrap().clone();
         } else if sendidexpr.is_some() {
-            cancel.sendidexpr = sendidexpr.unwrap().clone();
+            cancel.send_id_expr = sendidexpr.unwrap().clone();
         } else {
             panic!("{}: attribute {} or {} must be given", TAG_CANCEL, ATTR_SENDID, ATTR_SENDIDEXPR);
         }
@@ -1046,7 +1046,7 @@ impl ReaderState {
             }
             send_params.event = event.unwrap().clone();
         } else if eventexpr.is_some() {
-            send_params.eventexpr = eventexpr.unwrap().clone();
+            send_params.event_expr = eventexpr.unwrap().clone();
         }
 
         let target = attr.get(ATTR_TARGET);
@@ -1057,9 +1057,9 @@ impl ReaderState {
             }
             send_params.target = target.unwrap().clone();
         } else if targetexpr.is_some() {
-            send_params.targetexpr = targetexpr.unwrap().clone();
+            send_params.target_expr = targetexpr.unwrap().clone();
         } else {
-            send_params.target = TARGET_SCXMLEVENT_PROCESSOR.to_string();
+            send_params.target = TARGET_SCXML_EVENT_PROCESSOR.to_string();
         }
 
         let type_attr = attr.get(ATTR_TYPE);
@@ -1070,7 +1070,7 @@ impl ReaderState {
             }
             send_params.type_value = type_attr.unwrap().clone();
         } else if typeexpr.is_some() {
-            send_params.typeexpr = typeexpr.unwrap().clone();
+            send_params.type_expr = typeexpr.unwrap().clone();
         }
 
         let id = attr.get(ATTR_ID);
@@ -1081,7 +1081,7 @@ impl ReaderState {
             }
             send_params.name = id.unwrap().clone();
         } else if idlocation.is_some() {
-            send_params.namelocation = idlocation.unwrap().clone();
+            send_params.name_location = idlocation.unwrap().clone();
         }
 
         let delay_attr = attr.get(ATTR_DELAY);
@@ -1091,12 +1091,12 @@ impl ReaderState {
             if delay_attr.is_some() {
                 panic!("{}: attributes {} and {} must not occur both", TAG_SEND, ATTR_DELAY, ATTR_DELAYEXPR);
             }
-            send_params.delayexpr = delay_expr_attr.unwrap().clone();
+            send_params.delay_expr = delay_expr_attr.unwrap().clone();
         } else if delay_attr.is_some() {
             if (!delay_attr.unwrap().is_empty()) && type_attr.is_some() && type_attr.unwrap().eq(TARGET_INTERNAL) {
                 panic!("{}: {} with {} {} is not possible", TAG_SEND, ATTR_DELAY, ATTR_TARGET, type_attr.unwrap());
             }
-            let delayms = parse_duration_to_millies(delay_attr.unwrap());
+            let delayms = parse_duration_to_milliseconds(delay_attr.unwrap());
             if delayms < 0 {
                 panic!("{}: {} with illegal value '{}'", TAG_SEND, ATTR_DELAY, delay_attr.unwrap());
             } else {

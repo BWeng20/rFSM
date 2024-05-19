@@ -18,10 +18,10 @@ pub struct EventIOProcessorHandle {
 /// but may share backends with other sessions, e.g. a http server.
 pub trait EventIOProcessor: ToAny + Debug + Send {
     /// Returns the location of this processor.
-    fn get_location(&self) -> &str;
+    fn get_location(&self) -> String;
 
     /// Returns the type of this processor.
-    fn get_type(&self) -> &str;
+    fn get_types(&self) -> &[&str];
 
     fn get_handle(&mut self) -> &mut EventIOProcessorHandle;
 

@@ -27,7 +27,7 @@ pub const BASIC_HTTP_EVENT_PROCESSOR: &str = "http://www.w3.org/TR/scxml/#BasicH
 pub trait Datamodel {
     /// Returns the global data.\
     /// As the data model needs access to other global variables and rust doesn't like
-    /// accessing data of parents (Fsm in this case) from inside a member (the actual Datmodel), most global data is
+    /// accessing data of parents (Fsm in this case) from inside a member (the actual Datamodel), most global data is
     /// store in the "GlobalData" struct that is owned by the data model.
     fn global(&mut self) -> &mut GlobalData;
 
@@ -194,6 +194,12 @@ impl<T: Debug + 'static> ToAny for T {
 
 pub trait Data: ToAny + Send + Debug + ToString {
     fn get_copy(&self) -> Box<dyn Data>;
+    fn is_numeric(&self) -> bool {
+        false
+    }
+    fn as_number(&self) -> f64 {
+        0.0
+    }
 }
 
 pub fn get_data_as<T: 'static>(ec: &mut dyn Data) -> Option<&mut T> {
@@ -208,37 +214,71 @@ pub fn get_data_as<T: 'static>(ec: &mut dyn Data) -> Option<&mut T> {
     }
 }
 
-pub struct SimpleData {
+pub struct StringData {
     pub value: String,
 }
 
-impl SimpleData {
-    pub fn new(val: &str) -> SimpleData {
-        SimpleData {
+impl StringData {
+    pub fn new(val: &str) -> StringData {
+        StringData {
             value: val.to_string(),
         }
     }
 }
 
-impl Debug for SimpleData {
+impl Debug for StringData {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.value)
     }
 }
 
-impl ToString for SimpleData {
+impl ToString for StringData {
     fn to_string(&self) -> String {
         self.value.clone()
     }
 }
 
-impl Data for SimpleData {
+impl Data for StringData {
     fn get_copy(&self) -> Box<dyn Data> {
-        Box::new(SimpleData {
+        Box::new(StringData {
             value: self.value.clone(),
         })
     }
 }
+
+#[derive(Debug)]
+pub struct FloatData {
+    pub value: f64,
+}
+
+impl FloatData {
+    pub fn new(val: f64) -> FloatData {
+        FloatData {
+            value: val
+        }
+    }
+}
+
+impl ToString for FloatData {
+    fn to_string(&self) -> String {
+        self.value.to_string()
+    }
+}
+
+impl Data for FloatData {
+    fn get_copy(&self) -> Box<dyn Data> {
+        Box::new(FloatData { value: self.value })
+    }
+
+    fn is_numeric(&self) -> bool {
+        true
+    }
+
+    fn as_number(&self) -> f64 {
+        self.value
+    }
+}
+
 
 #[derive(Debug)]
 pub struct EmptyData {}

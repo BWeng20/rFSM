@@ -1,167 +1,237 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::convert::Infallible;
 use std::fmt::Debug;
-use std::net::{SocketAddr, TcpStream};
-use std::sync::{Arc, atomic::AtomicBool, mpsc::Sender};
+use std::net::{IpAddr, SocketAddr, TcpStream};
+use std::ops::Deref;
+use std::sync::{Arc, atomic::AtomicBool, Mutex};
 use std::sync::atomic::Ordering;
+use std::sync::mpsc;
+use std::sync::mpsc::channel;
+use std::thread;
 
-use http_body_util::{BodyExt, Full};
-use hyper::{Method, Request, Response, StatusCode};
-use hyper::body::Bytes;
-use hyper::server::conn::http1;
-use hyper::service::service_fn;
-use hyper_util::rt::TokioIo;
-use log::{error, info};
-use tokio::net::TcpListener;
+use hyper;
+use hyper::body::HttpBody;
+use hyper::service::{make_service_fn, service_fn};
+use log::{debug, error, info};
 
 use crate::datamodel::BASIC_HTTP_EVENT_PROCESSOR;
-/// See https://www.w3.org/TR/scxml/#BasicHTTPEventProcessor
-
 use crate::event_io_processor::{EventIOProcessor, EventIOProcessorHandle};
-use crate::fsm::Event;
+use crate::fsm::EventSender;
 
 pub const SCXML_EVENT_NAME: &str = "_scxmleventname";
 
-#[derive(Debug)]
+/// IO Processor to server basic http request. \
+/// See https://www.w3.org/TR/scxml/#BasicHTTPEventProcessor \
+/// If the feature is active, this IO Processor is automatically added by FsmExecutor.
+#[derive(Debug, Clone)]
 pub struct BasicHTTPEventIOProcessor {
-    pub location: String,
     pub terminate_flag: Arc<AtomicBool>,
-    pub local_adr: SocketAddr,
-    pub fsms: HashMap<String, Sender<Box<Event>>>,
+    pub state: Arc<Mutex<BasicHTTPEventIOProcessorServerData>>,
 }
 
-async fn handle_request(request: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
-    let (parts, body) = request.into_parts();
-    info!("Method {:?}", parts.method);
-    info!("Header {:?}", parts.headers );
-    info!("Uri {:?}", parts.uri );
+#[derive(Debug, Clone)]
+pub struct BasicHTTPEventIOProcessorServerData {
+    pub location: String,
+    pub local_adr: SocketAddr,
+    pub fsms: HashMap<String, EventSender>,
+}
 
-    let mut path = parts.uri.path().to_string();
+/// The parsed payload of a http request
+#[derive(Debug)]
+struct Message {
+    pub event: String,
+    pub session: String,
+}
 
-    // Path without leading "/" addresses the session to notify.
-    if path.starts_with("/") {
-        path.remove(0);
-    }
-    info!("Path {:?}", path );
-    if path.is_empty() {
-        return Ok(Response::builder().status(StatusCode::BAD_REQUEST).body(Full::new(Bytes::from("Missing Session Path"))).unwrap());
-    }
+/// Event processed by the message thread of the processor.
+#[derive(Debug)]
+enum BasicHTTPEvent {
+    /// A http request was parsed and shall to be executed by the target fsm.
+    Message(Message),
 
-    let query_params: HashMap<Cow<str>, Cow<str>>;
-    let db;
+    /// Informs the message thread about a new FSM in the system.
+    NewFsm(String, EventSender),
+}
 
-    match parts.method {
-        Method::POST => {
-            // Mantatory POST implementation
-            match body.collect().await {
-                Ok(data) => {
-                    db = data.to_bytes();
-                    query_params = form_urlencoded::parse(db.as_ref()).collect();
-                }
-                Err(_) => {
-                    return Ok(Response::builder().status(StatusCode::BAD_REQUEST).body(Full::new(Bytes::from("No Body"))).unwrap());
-                }
-            }
+impl BasicHTTPEvent {
+    /// Parse a Http request and created  the resulting message to the message thread.
+    pub async fn from_request(request: hyper::Request<hyper::Body>) -> Result<BasicHTTPEvent, hyper::StatusCode> {
+        let (parts, mut body) = request.into_parts();
+        debug!("Method {:?}", parts.method);
+        debug!("Header {:?}", parts.headers );
+        debug!("Uri {:?}", parts.uri );
+
+        let mut path = parts.uri.path().to_string();
+
+        // Path without leading "/" addresses the session to notify.
+        if path.starts_with("/") {
+            path.remove(0);
         }
-        Method::GET => {
-            // Optional GET implementation
-            query_params =
-                match parts.uri.query() {
+        debug!("Path {:?}", path );
+        if path.is_empty() {
+            error!("Missing Session Path");
+            return Err(hyper::StatusCode::BAD_REQUEST);
+        }
+
+        let query_params: HashMap<Cow<str>, Cow<str>>;
+        let db;
+
+        match parts.method {
+            hyper::Method::POST => {
+                // Mandatory POST implementation
+                match body.data().await {
+                    Some(data) => {
+                        db = data.unwrap();
+                        query_params = form_urlencoded::parse(db.as_ref()).collect();
+                    }
                     None => {
-                        HashMap::new()
+                        return Err(hyper::StatusCode::BAD_REQUEST);
                     }
-                    Some(query_s) => {
-                        form_urlencoded::parse(query_s.as_bytes()).collect()
-                    }
-                };
-        }
-        _ => {
-            return Ok(Response::builder().status(StatusCode::BAD_REQUEST).body(Full::new(Bytes::from("POST or GET request expected"))).unwrap());
-        }
-    }
-
-    info!("Query Parameters {:?}", query_params );
-
-    let event_name =
-        match query_params.get(SCXML_EVENT_NAME) {
-            None => {
-                ""
+                }
             }
-            Some(event_name) => {
-                event_name
+            hyper::Method::GET => {
+                // Optional GET implementation
+                query_params =
+                    match parts.uri.query() {
+                        None => {
+                            HashMap::new()
+                        }
+                        Some(query_s) => {
+                            form_urlencoded::parse(query_s.as_bytes()).collect()
+                        }
+                    };
             }
+            _ => {
+                return Err(hyper::StatusCode::BAD_REQUEST);
+            }
+        }
+
+        debug!("Query Parameters {:?}", query_params );
+
+        let event_name =
+            match query_params.get(SCXML_EVENT_NAME) {
+                None => {
+                    ""
+                }
+                Some(event_name) => {
+                    debug!("Event Name {:?}", event_name );
+                    event_name
+                }
+            };
+
+        let msg = Message {
+            event: event_name.to_string(),
+            session: path,
         };
+        Ok(BasicHTTPEvent::Message(msg))
+    }
+}
 
-    info!("Event Name {:?}", event_name );
-    return Ok(Response::new(Full::new(Bytes::from("Send"))));
+/// Process a request and sends the resulting event via Sender.
+/// The result is always Ok
+async fn handle_request(req: hyper::Request<hyper::Body>, tx: mpsc::Sender<Box<BasicHTTPEvent>>) -> Result<hyper::Response<hyper::Body>, hyper::Error> {
+    debug!("Serve {:?}", req );
+
+    let rs =
+        async {
+            BasicHTTPEvent::from_request(req).await
+        }.await;
+    return match rs {
+        Ok(event) => {
+            let sr = tx.send(Box::new(event));
+            match sr {
+                Ok(_) => {
+                    debug!("SendOk");
+                    Ok(hyper::Response::builder().status(hyper::StatusCode::OK).body(hyper::Body::from("Ok")).unwrap())
+                }
+                Err(error) => {
+                    debug!("SendError {:?}", error);
+                    Ok(hyper::Response::builder().status(hyper::StatusCode::INTERNAL_SERVER_ERROR).body(hyper::Body::from(error.to_string())).unwrap())
+                }
+            }
+        }
+        Err(status) => {
+            Ok(hyper::Response::builder().status(status.clone()).body(hyper::Body::from("Error".to_string())).unwrap())
+        }
+    };
 }
 
 impl BasicHTTPEventIOProcessor {
-    pub fn new(addr: &SocketAddr) -> BasicHTTPEventIOProcessor {
+    pub fn new(ip_addr: IpAddr, location_name: &str, port: u16) -> BasicHTTPEventIOProcessor {
         let terminate_flag = Arc::new(AtomicBool::new(false));
-        let inner_terminate_flag = terminate_flag.clone();
-        let inner_addr = addr.clone();
+
+        let addr = SocketAddr::new(ip_addr, port);
 
         info!("HTTP server starting");
 
-        let thread =
-            tokio::task::spawn(async move {
-                match TcpListener::bind(inner_addr).await {
-                    Ok(listener) => {
-                        info!("HTTP Event IO Processor listening at {:?}", inner_addr );
+        let inner_terminate_flag = terminate_flag.clone();
+        let (sender, receiver_server) = channel::<Box<BasicHTTPEvent>>();
 
-                        loop {
-                            match listener.accept().await {
-                                Ok((stream, _)) => {
-                                    if inner_terminate_flag.load(Ordering::Relaxed) {
-                                        break;
-                                    }
-                                    info!("HTTP accept" );
-                                    let io = TokioIo::new(stream);
-                                    tokio::task::spawn(async move {
-                                        if let Err(err) = http1::Builder::new()
-                                            // `service_fn` converts our function in a `Service`
-                                            .serve_connection(io, service_fn(handle_request))
-                                            .await
-                                        {
-                                            error!("Error serving connection: {:?}", err);
-                                        }
-                                    });
+        let _thread_server =
+            thread::spawn(move || {
+                let mut c = 0;
+                debug!("Message server started");
+                while !inner_terminate_flag.load(Ordering::Relaxed) {
+                    let event_opt = receiver_server.recv();
+                    c = c + 1;
+                    match event_opt {
+                        Ok(event) => {
+                            match event.deref() {
+                                BasicHTTPEvent::Message(message) => {
+                                    debug!("BasicHTTPEvent:Message #{} {:?}", c, message);
+                                    // TODO: Sending event to session
                                 }
-                                Err(err) => {
-                                    error!("Error accepting connection: {:?}", err);
+                                BasicHTTPEvent::NewFsm(name, sender) => {
+                                    debug!("BasicHTTPEvent:NewFsm #{} {} {:?}", c, name, sender);
+                                    // TODO: Adding fsm to list
                                 }
                             }
                         }
-                        info!("HTTP server finished");
-                    }
-                    Err(e) => {
-                        error!("HTTP Event IO Processor error {:?} listening at {:?}", e, inner_addr );
+                        Err(_err) => {
+                            debug!("Message server channel disconnected");
+                            break;
+                        }
                     }
                 }
+                debug!("Message server stopped");
             });
+
+
+        let make_svc = make_service_fn(move |_| {
+            let tx = sender.clone();
+            async move {
+                Ok::<_, hyper::Error>(service_fn(move |req| handle_request(req, tx.clone())))
+            }
+        });
+
+        let server = hyper::Server::bind(&addr).serve(make_svc);
+        let _thread_server = tokio::spawn(server);
+
+        debug!("BasicHTTPServer at {:?}", addr );
+
+        let state = BasicHTTPEventIOProcessorServerData {
+            location: format!("https://{}:{}", location_name, port),
+            local_adr: addr,
+            fsms: HashMap::new(),
+        };
         let e = BasicHTTPEventIOProcessor
         {
-            location: "https://localhost:5555".to_string(),
-            terminate_flag,
-            fsms: HashMap::new(),
-            local_adr: addr.clone(),
+            terminate_flag: Arc::<AtomicBool>::new(AtomicBool::new(false)), // terminate_flag,
+            state: Arc::new(Mutex::new(state)),
         };
         e
     }
 }
 
+const TYPES: &[&str] = &[BASIC_HTTP_EVENT_PROCESSOR, "http"];
 
 impl EventIOProcessor for BasicHTTPEventIOProcessor {
-    fn get_location(&self) -> &str {
-        self.location.as_str()
+    fn get_location(&self) -> String {
+        self.state.lock().unwrap().location.clone()
     }
 
     /// Returns the type of this processor.
-    fn get_type(&self) -> &str {
-        BASIC_HTTP_EVENT_PROCESSOR
-    }
+    fn get_types(&self) -> &[&str] { TYPES }
 
     fn get_handle(&mut self) -> &mut EventIOProcessorHandle {
         todo!()
@@ -169,10 +239,8 @@ impl EventIOProcessor for BasicHTTPEventIOProcessor {
 
     fn get_copy(&self) -> Box<dyn EventIOProcessor> {
         let b = BasicHTTPEventIOProcessor {
-            location: self.location.clone(),
             terminate_flag: self.terminate_flag.clone(),
-            fsms: self.fsms.clone(),
-            local_adr: self.local_adr.clone(),
+            state: self.state.clone(),
         };
         Box::new(b)
     }
@@ -180,6 +248,6 @@ impl EventIOProcessor for BasicHTTPEventIOProcessor {
     fn shutdown(&mut self) {
         info!("HTTP Event IO Processor shutdown...");
         self.terminate_flag.as_ref().store(true, Ordering::Relaxed);
-        let _ = TcpStream::connect(self.local_adr);
+        let _ = TcpStream::connect(self.state.lock().unwrap().local_adr);
     }
 }

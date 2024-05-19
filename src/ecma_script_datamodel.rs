@@ -11,7 +11,7 @@ use boa_engine::object::{FunctionBuilder, JsMap};
 use boa_engine::value::Type;
 use log::{debug, error, info, warn};
 
-use crate::datamodel::{Data, Datamodel, DataStore, SimpleData};
+use crate::datamodel::{Data, Datamodel, DataStore, StringData};
 use crate::event_io_processor::{EventIOProcessor, SYS_IO_PROCESSORS};
 use crate::executable_content::{DefaultExecutableContentTracer, ExecutableContentTracer};
 use crate::fsm::{ExecutableContentId, Fsm, GlobalData, State, StateId};
@@ -124,8 +124,15 @@ impl ECMAScriptDatamodel {
                 self.stack.push_back((name.to_string(), None));
             }
         }
+
+        let js: JsValue;
+        if data.is_numeric() {
+            js = JsValue::Rational(data.as_number());
+        } else {
+            js = JsValue::String(JsString::new(data.to_string()));
+        }
         // @TODO: handle also complex data.
-        self.context.register_global_property(name, JsString::new(data.to_string()), Attribute::all());
+        self.context.register_global_property(name, js, Attribute::all());
         self.data.values.insert(name.to_string(), data);
     }
 
@@ -142,7 +149,7 @@ impl ECMAScriptDatamodel {
                 self.stack.push_back((name.to_string(), None));
             }
         }
-        self.data.values.insert(name.to_string(), Box::new(SimpleData::new(data)));
+        self.data.values.insert(name.to_string(), Box::new(StringData::new(data)));
         self.context.register_global_property(name, JsString::new(data), Attribute::all());
     }
 
