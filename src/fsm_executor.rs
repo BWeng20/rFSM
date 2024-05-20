@@ -13,14 +13,14 @@ use crate::event_io_processor::EventIOProcessor;
 use crate::fsm::{Event, Trace};
 use crate::scxml_event_io_processor::ScxmlEventIOProcessor;
 
-pub struct SystemState {
+pub struct ExecuterState {
     pub processors: Vec<Box<dyn EventIOProcessor>>,
 
 }
 
-impl SystemState {
-    pub fn new() -> SystemState {
-        let e = SystemState {
+impl ExecuterState {
+    pub fn new() -> ExecuterState {
+        let e = ExecuterState {
             processors: Vec::new(),
         };
         e
@@ -30,7 +30,7 @@ impl SystemState {
 /// Executed FSM in separate threads.
 /// This class maintains IO Processors used by the FSMs.
 pub struct FsmExecutor {
-    pub state: Arc<Mutex<SystemState>>,
+    pub state: Arc<Mutex<ExecuterState>>,
 }
 
 impl FsmExecutor {
@@ -40,7 +40,7 @@ impl FsmExecutor {
 
     pub fn new() -> FsmExecutor {
         let mut e = FsmExecutor {
-            state: Arc::new(Mutex::new(SystemState::new())),
+            state: Arc::new(Mutex::new(ExecuterState::new())),
         };
         #[cfg(feature = "BasicHttpEventIOProcessor")]
         {

@@ -23,11 +23,11 @@ use crate::datamodel::{Data, Datamodel, DataStore, NULL_DATAMODEL, NULL_DATAMODE
 use crate::ecma_script_datamodel::{ECMA_SCRIPT_LC, ECMAScriptDatamodel};
 use crate::event_io_processor::EventIOProcessor;
 use crate::executable_content::ExecutableContent;
-use crate::fsm_executor::SystemState;
+use crate::fsm_executor::ExecuterState;
 
 /// Starts the FSM inside a worker thread.
 ///
-pub fn start_fsm(mut sm: Box<Fsm>, executor_state: &Arc<Mutex<SystemState>>) -> (JoinHandle<()>, Sender<Box<Event>>) {
+pub fn start_fsm(mut sm: Box<Fsm>, executor_state: &Arc<Mutex<ExecuterState>>) -> (JoinHandle<()>, Sender<Box<Event>>) {
     #![allow(non_snake_case)]
     let externalQueue: BlockingQueue<Box<Event>> = BlockingQueue::new();
     let sender = externalQueue.sender.clone();
@@ -3216,7 +3216,7 @@ mod tests {
         let mut fsm = sm.unwrap();
         fsm.tracer.enable_trace(Trace::ALL);
 
-        let state = Arc::new(Mutex::new(fsm_executor::SystemState::new()));
+        let state = Arc::new(Mutex::new(fsm_executor::ExecuterState::new()));
 
         let (thread_handle, sender) = fsm::start_fsm(fsm, &state);
 
