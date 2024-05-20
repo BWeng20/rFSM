@@ -16,9 +16,9 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::JoinHandle;
 
-use log::info;
+use log::{debug, info};
 
-use crate::datamodel::{Data, Datamodel, DataStore, NULL_DATAMODEL, NULL_DATAMODEL_LC, NullDatamodel};
+use crate::datamodel::{Data, Datamodel, DataStore, NULL_DATAMODEL, NULL_DATAMODEL_LC, NullDatamodel, StringData};
 #[cfg(feature = "ECMAScript")]
 use crate::ecma_script_datamodel::{ECMA_SCRIPT_LC, ECMAScriptDatamodel};
 use crate::event_io_processor::EventIOProcessor;
@@ -975,6 +975,8 @@ pub struct Fsm {
     pub timer: timer::Timer,
 
     pub session_id: u32,
+
+    pub generate_id_count: u32,
 }
 
 impl Debug for Fsm {
@@ -1037,7 +1039,13 @@ impl Fsm {
             executableContent: HashMap::new(),
             timer: timer::Timer::new(),
             session_id: 0,
+            generate_id_count: 0,
         }
+    }
+
+    fn generate_id(&mut self) -> String {
+        self.generate_id_count += 1;
+        format!("id{}", self.generate_id_count)
     }
 
     pub fn get_state_by_name(&self, name: &Name) -> &State
@@ -1328,7 +1336,7 @@ impl Fsm {
             {
                 let state = self.get_state_by_id(*sid);
                 for inv in state.invoke.sort(&|i1, i2| { Fsm::invoke_document_order(i1, i2) }).iterator() {
-                    self.invoke(inv);
+                    self.invoke(datamodel, inv);
                 }
             }
 
@@ -2392,8 +2400,28 @@ impl Fsm {
         l
     }
 
-    fn invoke(&mut self, _inv: &Invoke) {
+    fn invoke(&mut self, datamodel: &mut dyn Datamodel, inv: &Invoke) {
         // We need a "invoke" concept!
+        let mut type_name: String;
+        if inv.type_expr.is_empty() {
+            type_name = inv.type_name.clone();
+        } else {
+            type_name = datamodel.execute(self, inv.type_expr.as_str());
+        }
+        let mut id: String;
+        if inv.external_id.is_empty() {
+            // Generate
+            id = self.generate_id();
+        } else {
+            id = inv.external_id.clone();
+        }
+        debug!("Invoke: type '{}' id '{}'", type_name, id);
+        // We don't check if id and idLocation are exclusive set.
+        // So it's possible to store the static values from attribute "id".
+        if !inv.external_id_location.is_empty() {
+            // If "idlocation" is specified, we have to store the generated id to this location
+            datamodel.set(inv.external_id_location.as_str(), Box::new(StringData::new_moved(id)));
+        }
         todo!()
     }
 

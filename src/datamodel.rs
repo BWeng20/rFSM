@@ -224,6 +224,11 @@ impl StringData {
             value: val.to_string(),
         }
     }
+    pub fn new_moved(val: String) -> StringData {
+        StringData {
+            value: val,
+        }
+    }
 }
 
 impl Debug for StringData {
