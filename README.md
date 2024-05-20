@@ -167,11 +167,10 @@ classDiagram
 
     class BlockingQueue{
     }
-    
+
+    NullDatamodel ..|> Datamodel
     ECMAScriptDatamodel ..|> Datamodel
     ECMAScriptDatamodel --> context_map: context_id
-    
-    NullDatamodel ..|> Datamodel
     
     class reader {
      +read_from_xml(xml) Fsm
@@ -180,17 +179,36 @@ classDiagram
       
     reader --> Fsm : Creates 
     
-    class IOEventProcessor {
+    class EventIOProcessor {
+        + get_location() String
+        + get_types() str[]
+        + get_handle() EventIOProcessorHandle
+        + get_copy() EventIOProcessor
+        + shutdown()
     }
 
-    class HttpIOEventProcessor {
+    class BasicHTTPEventIOProcessor {
+    }
+
+
+    BasicHTTPEventIOProcessor ..|> EventIOProcessor
+    
+    class FsmExecutor {
+        + add_processor(EventIOProcessor)
+        + shutdown()
+        + execute(file_path, trace)
     }
     
-    
-    HttpIOEventProcessor ..|> IOEventProcessor
-    
-    Datamodel "1" *-- "0..n" IOEventProcessor 
-    
+    class SystemState {
+        processors : EventIOProcessor[]
+    }
+
+    Datamodel "0..n" -- "0..n" EventIOProcessor
+    SystemState "1" *-- "0..n" EventIOProcessor
+    FsmExecutor "1" *-- "1" SystemState
+    FsmExecutor "1" *-- "0..n" Fsm
+
+
 ```
 
 The Fsm implements the methods described in the W3C Recommendation. The main loop is executed in a work-thread. The application sends events via a "BlockingQueue" (technical a
