@@ -11,10 +11,10 @@ use boa_engine::object::{FunctionBuilder, JsMap};
 use boa_engine::value::Type;
 use log::{debug, error, info, warn};
 
-use crate::datamodel::{Data, Datamodel, DataStore, StringData};
+use crate::datamodel::{BooleanData, Data, Datamodel, DataStore, EmptyData, FloatData, StringData};
 use crate::event_io_processor::{EventIOProcessor, SYS_IO_PROCESSORS};
 use crate::executable_content::{DefaultExecutableContentTracer, ExecutableContentTracer};
-use crate::fsm::{ExecutableContentId, Fsm, GlobalData, State, StateId};
+use crate::fsm::{BindingType, ExecutableContentId, Fsm, GlobalData, State, StateId};
 
 pub const ECMA_SCRIPT: &str = "ECMAScript";
 pub const ECMA_SCRIPT_LC: &str = "ecmascript";
@@ -170,6 +170,36 @@ impl ECMAScriptDatamodel {
             None => {}
         }
     }
+
+    fn to_data(ctx: &mut Context, value: &JsValue) -> Box<dyn Data>
+    {
+        match value.get_type() {
+            Type::Undefined => {
+                Box::new(EmptyData::new())
+            }
+            Type::Null => {
+                Box::new(EmptyData::new())
+            }
+            Type::Boolean => {
+                Box::new(BooleanData::new(value.to_boolean()))
+            }
+            Type::Number => {
+                Box::new(FloatData::new(value.to_number(ctx).unwrap()))
+            }
+            Type::String => {
+                Box::new(StringData::new_moved(value.to_string(ctx).unwrap().to_string()))
+            }
+            Type::Symbol => {
+                todo!()
+            }
+            Type::BigInt => {
+                todo!()
+            }
+            Type::Object => {
+                todo!()
+            }
+        }
+    }
 }
 
 /**
@@ -215,8 +245,21 @@ impl Datamodel for ECMAScriptDatamodel {
         // Set all (simple) global variables.
         for (name, data) in &state_obj.data.values
         {
-            self.data.values.insert(name.clone(), data.get_copy());
-            ctx.register_global_property(name.as_str(), data.to_string(), Attribute::all());
+            let mut new_data: Box<dyn Data>;
+            match ctx.eval(data.to_string()) {
+                Ok(val) => {
+                    new_data = ECMAScriptDatamodel::to_data(ctx, &val);
+                }
+                Err(_) => {
+                    todo!()
+                }
+            }
+            if new_data.is_numeric() {
+                ctx.register_global_property(name.as_str(), new_data.as_number(), Attribute::all());
+            } else {
+                ctx.register_global_property(name.as_str(), new_data.to_string(), Attribute::all());
+            }
+            self.data.values.insert(name.clone(), new_data);
         }
 
         // set system variable "_ioprocessors"
