@@ -614,7 +614,7 @@ pub struct Invoke {
 
     /// #W3c says:
     /// List of valid location expressions
-    pub namelist: Vec<String>,
+    pub name_list: Vec<String>,
 
     /// #W3c says:
     /// A URI to be passed to the external service.\
@@ -625,7 +625,7 @@ pub struct Invoke {
     /// A dynamic alternative to 'src'. If this attribute is present,
     /// the SCXML Processor must evaluate it when the parent \<invoke\> element is evaluated and treat the result
     /// as if it had been entered as the value of 'src'.
-    pub srcexpr: String,
+    pub src_expr: String,
 
     /// #W3c says:
     /// Boolean.\
@@ -652,9 +652,9 @@ impl Invoke {
             external_id_location: "".to_string(),
             type_name: "".to_string(),
             type_expr: "".to_string(),
-            namelist: vec![],
+            name_list: vec![],
             src: "".to_string(),
-            srcexpr: "".to_string(),
+            src_expr: "".to_string(),
             autoforward: false,
             content: "".to_string(),
             content_expr: "".to_string(),
@@ -672,7 +672,7 @@ impl Debug for Invoke {
             .field("type", &self.type_name)
             .field("typeexpr", &self.type_expr)
             .field("src", &self.src)
-            .field("srcexpr", &self.srcexpr)
+            .field("srcexpr", &self.src_expr)
             .field("autoforward", &self.autoforward)
             .field("content", &self.content)
             .field("content_expr", &self.content_expr)
@@ -2402,22 +2402,39 @@ impl Fsm {
 
     fn invoke(&mut self, datamodel: &mut dyn Datamodel, inv: &Invoke) {
         // We need a "invoke" concept!
-        let mut type_name: String;
+        let type_name: String;
         if inv.type_expr.is_empty() {
             type_name = inv.type_name.clone();
         } else {
             type_name = datamodel.execute(self, inv.type_expr.as_str());
         }
-        let mut id: String;
+        let id: String;
         if inv.external_id.is_empty() {
             // Generate
             id = self.generate_id();
         } else {
             id = inv.external_id.clone();
         }
-        debug!("Invoke: type '{}' id '{}'", type_name, id);
-        // We don't check if id and idLocation are exclusive set.
-        // So it's possible to store the static values from attribute "id".
+        let src: String;
+        if inv.src_expr.is_empty() {
+            // Generate
+            src = inv.src.clone();
+        } else {
+            src = datamodel.execute(self, inv.src_expr.as_str());
+        }
+        let mut name_values: HashMap<String, String> = HashMap::new();
+        for name in inv.name_list.as_slice() {
+            match datamodel.get(name) {
+                None => {}
+                Some(value) => {
+                    name_values.insert(name.clone(), value.to_string());
+                }
+            }
+        }
+
+        debug!("Invoke: type '{}' id '{}' src '{}' namelist '{:?}'", type_name, id, src, name_values);
+
+        // We currently don't check if id and idLocation are exclusive set.
         if !inv.external_id_location.is_empty() {
             // If "idlocation" is specified, we have to store the generated id to this location
             datamodel.set(inv.external_id_location.as_str(), Box::new(StringData::new_moved(id)));
