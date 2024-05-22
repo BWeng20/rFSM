@@ -251,6 +251,36 @@ impl Data for StringData {
     }
 }
 
+pub struct BooleanData {
+    pub value: bool,
+}
+
+impl BooleanData {
+    pub fn new(val: bool) -> BooleanData {
+        BooleanData {
+            value: val,
+        }
+    }
+}
+
+impl Debug for BooleanData {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.value)
+    }
+}
+
+impl ToString for BooleanData {
+    fn to_string(&self) -> String {
+        (if self.value { "true" } else { "false" }).to_string()
+    }
+}
+
+impl Data for BooleanData {
+    fn get_copy(&self) -> Box<dyn Data> {
+        Box::new(BooleanData { value: self.value })
+    }
+}
+
 #[derive(Debug)]
 pub struct FloatData {
     pub value: f64,
