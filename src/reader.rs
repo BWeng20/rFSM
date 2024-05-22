@@ -324,8 +324,10 @@ impl ReaderState {
         format!("__id{}", self.id_count)
     }
 
-    fn parse_location_expressions(&mut self, _location_expr: &str, _targets: &mut Vec<String>) {
-        todo!()
+    fn parse_location_expressions(&mut self, location_expr: &str, targets: &mut Vec<String>) {
+        location_expr.split_ascii_whitespace().for_each(|location| {
+            targets.push(location.to_string());
+        });
     }
 
     fn parse_state_specification(&mut self, target_name: &str, targets: &mut Vec<StateId>) {
@@ -722,7 +724,7 @@ impl ReaderState {
         }
         let srcexpr = attr.get(ATTR_SRCEXPR);
         if srcexpr.is_some() {
-            invoke.srcexpr = srcexpr.unwrap().clone();
+            invoke.src_expr = srcexpr.unwrap().clone();
         }
 
         // TODO--
@@ -737,7 +739,7 @@ impl ReaderState {
 
         let namelist = attr.get(ATTR_NAMELIST);
         if namelist.is_some() {
-            self.parse_location_expressions(namelist.unwrap(), &mut invoke.namelist);
+            self.parse_location_expressions(namelist.unwrap(), &mut invoke.name_list);
         }
         invoke.autoforward = self.parse_boolean(&attr.get(ATTR_AUTOFORWARD), false);
 
