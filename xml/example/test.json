@@ -1,0 +1,5 @@
+{ "file": "Invoke.scxml",
+   "events": [
+     "invoke"
+   ]
+}

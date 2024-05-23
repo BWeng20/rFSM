@@ -1263,10 +1263,10 @@ impl Fsm {
     ///                     enabledTransitions = selectTransitions(internalEvent)
     ///             if not enabledTransitions.isEmpty():
     ///                 microstep(enabledTransitions.toList())
-    ///         # either we're in a final state, and we break out of the loop
+    ///         # either we're in a final state, and we break out; of the loop
     ///         if not running:
     ///             break
-    ///         # or we've completed a macrostep, so we start a new macrostep by waiting for an external event
+    ///         # or; we've completed a macrostep, so we start a new macrostep by waiting for an external event
     ///         # Here we invoke whatever needs to be invoked. The implementation of 'invoke' is platform-specific
     ///         for state in statesToInvoke.sort(entryOrder):
     ///             for inv in state.invoke.sort(documentOrder):
@@ -1274,14 +1274,14 @@ impl Fsm {
     ///         statesToInvoke.clear()
     ///         # Invoking may have raised internal error events and we iterate to handle them
     ///         if not internalQueue.isEmpty():
-    ///             continue
+    ///             continue;
     ///         # A blocking wait for an external event.  Alternatively, if we have been invoked
     ///         # our parent session also might cancel us.  The mechanism for this is platform specific,
     ///         # but here we assume it’s a special event we receive
     ///         externalEvent = externalQueue.dequeue()
     ///         if isCancelEvent(externalEvent):
     ///             running = false
-    ///             continue
+    ///             continue;
     ///         datamodel["_event"] = externalEvent
     ///         for state in configuration:
     ///             for inv in state.invoke:
@@ -1494,9 +1494,9 @@ impl Fsm {
     ///             for t in s.transition.sort(documentOrder):
     ///                 if not t.event and conditionMatch(t):
     ///                     enabledTransitions.add(t)
-    ///                     break loop
+    ///                     break loop;
     ///     enabledTransitions = removeConflictingTransitions(enabledTransitions)
-    ///     return enabledTransitions
+    ///     return enabledTransitions;
     /// ```
     #[allow(non_snake_case)]
     fn selectEventlessTransitions(&mut self, datamodel: &mut dyn Datamodel) -> OrderedSet<TransitionId> {
@@ -1548,9 +1548,9 @@ impl Fsm {
     ///             for t in s.transition.sort(documentOrder):
     ///                 if t.event and nameMatch(t.event, event.name) and conditionMatch(t):
     ///                     enabledTransitions.add(t)
-    ///                     break loop
+    ///                     break loop;
     ///     enabledTransitions = removeConflictingTransitions(enabledTransitions)
-    ///     return enabledTransitions
+    ///     return enabledTransitions;
     /// ```
     #[allow(non_snake_case)]
     fn selectTransitions(&mut self, datamodel: &mut dyn Datamodel, event: &Event) -> OrderedSet<TransitionId> {
@@ -1625,12 +1625,12 @@ impl Fsm {
     ///                 else:
     ///                     t1Preempted = true
     ///                     break
-    ///         if not t1Preempted:
+    ///         if not; t1Preempted:
     ///             for t3 in transitionsToRemove.toList():
     ///                 filteredTransitions.delete(t3)
     ///             filteredTransitions.add(t1)
     ///
-    ///     return filteredTransitions
+    ///     return filteredTransitions;
     /// ```
     #[allow(non_snake_case)]
     fn removeConflictingTransitions(&self, datamodel: &mut dyn Datamodel, enabledTransitions: &OrderedSet<TransitionId>) -> OrderedSet<TransitionId> {
@@ -1959,7 +1959,7 @@ impl Fsm {
     ///             for s in configuration:
     ///                 if isDescendant(s,domain):
     ///                     statesToExit.add(s)
-    ///     return statesToExit
+    ///     return statesToExit;
     /// ```
     #[allow(non_snake_case)]
     fn computeExitSet(&self, datamodel: &mut dyn Datamodel, transitions: &List<TransitionId>) -> OrderedSet<StateId> {
@@ -2179,11 +2179,11 @@ impl Fsm {
     /// ```
     /// function isInFinalState(s):
     ///     if isCompoundState(s):
-    ///         return getChildStates(s).some(lambda s: isFinalState(s) and configuration.isMember(s))
+    ///         return getChildStates(s).some(lambda s: isFinalState(s) and configuration.isMember(s));
     ///     elif isParallelState(s):
-    ///         return getChildStates(s).every(isInFinalState)
+    ///         return getChildStates(s).every(isInFinalState);
     ///     else:
-    ///         return false
+    ///         return false;
     /// ```
     #[allow(non_snake_case)]
     fn isInFinalState(&self, datamodel: &dyn Datamodel, s: StateId) -> bool {
@@ -2207,11 +2207,11 @@ impl Fsm {
     /// function getTransitionDomain(t)
     ///     tstates = getEffectiveTargetStates(t)
     ///     if not tstates:
-    ///         return null
+    ///         return null;
     ///     elif t.type == "internal" and isCompoundState(t.source) and tstates.every(lambda s: isDescendant(s,t.source)):
-    ///         return t.source
+    ///         return t.source;
     ///     else:
-    ///         return findLCCA([t.source].append(tstates))
+    ///         return findLCCA([t.source].append(tstates));
     /// ```
     #[allow(non_snake_case)]
     fn getTransitionDomain(&self, datamodel: &mut dyn Datamodel, t: &Transition) -> StateId {

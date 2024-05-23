@@ -32,14 +32,27 @@ The resulting model can be moved to another thread.
 
 ### Overview
 
+## Crate Features
+
+| Name                      | Description                                          | Related crates                                            |
+|---------------------------|------------------------------------------------------|-----------------------------------------------------------|
+| ECMAScript                | Adds an EMCAScript datamodel implementation.         | boa_engine                                                |
+| EnvLog                    | The crate "env_log" is used as "log" implementation. | env_log                                                   |
+| BasicHttpEventIOProcessor | Adds an implementation of BasicHttpEventIOProcessor  | hyper, http-body-util, hyper-util, tokio, form_urlencoded |
+| TestRunner                | Adds an test tool. See chapter "Test Runner"         |                                                           |
+
+
+## Structure
+
 ```mermaid
 erDiagram
     Fsm {
     }
 
-    reader {
+    FsmExecutor {
     }
-   
+
+    Fsm }o--|| FsmExecutor : manages
 
     Datamodel {
     }
@@ -47,21 +60,15 @@ erDiagram
     EventIOProcessor {
     }
 
-    BasicHTTPEventIOProcessor {
-    }
-
     XML }o--|| reader : parse
-    XML {
-    }
+    XML {  }
 
     reader ||--o{ Fsm : creates   
 
-    Fsm ||..|| Datamodel : owns
-    Datamodel ||..}o EventIOProcessor : owns
-    BasicHTTPEventIOProcessor ||--|| EventIOProcessor: implements
-    
-    ECMAScript ||--|| Datamodel : implements
-    NullDatamodel ||--|| Datamodel : implements
+    Fsm ||..|| Datamodel : calls
+    FsmExecutor ||..}o EventIOProcessor : manages
+    Datamodel o{..}o EventIOProcessor : references
+    Fsm o{..}o EventIOProcessor : calls
  
 ```
 
@@ -246,14 +253,18 @@ The Tracer has different flags to control what is traced, see Enum Trace for det
 The used log level of crate "log" can be controlled by environment variable "RUST_LOG", e.g. "RUST_LOG=debug".
 
 
-### Testing
+### Manual Tests
 
-For testing your scxml you can use the main-function of the project.
+For manual testing your scxml you can use the "fsm" binary of the project.
 
-`rfsm MySM.scxml`
+`fsm MySM.scxml`
 
 The scxml will be parsed and the resulting FSM will be executed. The app prompts for events that are send via the external-event-queue. Enter 'help' to display some usage
 information.
 
 Remind that Tracer uses "log" for any output, to see it on console, you will need to set the log level before starting rfsm. E.g. by a`export RUST_LOG=debug`
 or depending on your OS, `set RUST_LOG=debug`.
+
+### Automated Testing
+
+For automated tests the binary "test" can be used.

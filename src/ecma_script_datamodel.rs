@@ -14,7 +14,7 @@ use log::{debug, error, info, warn};
 use crate::datamodel::{BooleanData, Data, Datamodel, DataStore, EmptyData, FloatData, StringData};
 use crate::event_io_processor::{EventIOProcessor, SYS_IO_PROCESSORS};
 use crate::executable_content::{DefaultExecutableContentTracer, ExecutableContentTracer};
-use crate::fsm::{BindingType, ExecutableContentId, Fsm, GlobalData, State, StateId};
+use crate::fsm::{ExecutableContentId, Fsm, GlobalData, State, StateId};
 
 pub const ECMA_SCRIPT: &str = "ECMAScript";
 pub const ECMA_SCRIPT_LC: &str = "ecmascript";
@@ -245,7 +245,7 @@ impl Datamodel for ECMAScriptDatamodel {
         // Set all (simple) global variables.
         for (name, data) in &state_obj.data.values
         {
-            let mut new_data: Box<dyn Data>;
+            let new_data: Box<dyn Data>;
             match ctx.eval(data.to_string()) {
                 Ok(val) => {
                     new_data = ECMAScriptDatamodel::to_data(ctx, &val);
