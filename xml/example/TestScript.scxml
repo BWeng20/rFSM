@@ -1,6 +1,6 @@
 <scxml xmlns="http://www.w3.org/2005/07/scxml"
        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-       xsi:schemaLocation="http://www.w3.org/2005/07/scxml ../scxml.xsd" version="1.0"
+       xsi:schemaLocation="http://www.w3.org/2005/07/scxml ../../schema/scxml.xsd" version="1.0"
        initial="Main"
        datamodel="ecmascript">
     <script>
@@ -18,7 +18,7 @@
                     <elseif cond="i>=50"/>
                     <log label="warn" expr="'>= 50'"/>
                     <else/>
-                    <log label="info" expr="'< 50'"/>
+                    <log label="info" expr="'&lt; 50'"/>
                 </if>
             </foreach>
             <log label="info" expr="'---- Testing map/object --'"/>

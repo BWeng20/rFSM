@@ -1,5 +1,9 @@
 { "file": "Invoke.scxml",
    "events": [
-     "invoke"
+     {
+       "name": "invoke",
+       "delay_ms": 1000,
+       "shall_reach_state": "#stop"
+     }
    ]
 }
