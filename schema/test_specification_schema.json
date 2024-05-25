@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/BWeng20/rFSM/test-specification.json",
+  "title": "rFSM Test Specification",
+  "description": "Test specification for rSFM test runner.",
+  "type": "object",
+  "properties": {
+    "file": {
+      "description": "The relative path to the SCXML file or the FSM to test.",
+      "type": "string"
+    },
+    "events": {
+      "description": "The sequence of events to test.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "The event name.",
+            "type": "string"
+          },
+          "delay_ms" :
+          {
+            "description": "Delay in milliseconds after the event was send.",
+            "type": "integer"
+          },
+          "shall_reach_state" :
+          {
+            "description": " Optional state to reach after the event.\\nUse #stop to check for termination of FSM.",
+
+            "type": "sting"
+          },
+          "shall_send_event" :
+          {
+            "description": "Optional event to receive from FSM after the event.",
+            "type": "sting"
+          }
+        },
+        "required": [ "name", "delay_ms" ]
+      }
+    }
+  },
+  "required": [ "file", "events" ]
+}
