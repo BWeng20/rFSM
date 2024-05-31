@@ -1,3 +1,6 @@
 /target
 /.idea/
 /Cargo.lock
+/test/w3c/txml/
+/test/w3c/saxon/
+/test/w3c/scxml/
