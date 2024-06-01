@@ -2470,7 +2470,9 @@ pub struct State {
     /// The local datamodel
     pub data: DataStore,
 
+    /// True if the state was never entered before.
     pub isFirstEntry: bool,
+
     pub parent: StateId,
     pub donedata: Option<DoneData>,
 }
@@ -2489,7 +2491,6 @@ impl State {
             is_parallel: false,
             is_final: false,
             history_type: HistoryType::None,
-            /// True if the state was never entered before.
             data: DataStore::new(),
             isFirstEntry: false,
             parent: 0,
