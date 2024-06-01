@@ -16,6 +16,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::JoinHandle;
 
 use log::{debug, info};
+
 use crate::datamodel::{Data, Datamodel, DataStore, NULL_DATAMODEL, NULL_DATAMODEL_LC, NullDatamodel, StringData};
 #[cfg(feature = "ECMAScript")]
 use crate::ecma_script_datamodel::{ECMA_SCRIPT_LC, ECMAScriptDatamodel};
@@ -2019,7 +2020,7 @@ impl Fsm {
     /// function findLCCA(stateList):
     ///     for anc in getProperAncestors(stateList.head(),null).filter(isCompoundStateOrScxmlElement):
     ///         if stateList.tail().every(lambda s: isDescendant(s,anc)):
-    ///             return anc
+    ///             return anc;
     /// ```
     #[allow(non_snake_case)]
     fn findLCCA(&self, stateList: &List<StateId>) -> StateId {

@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::env;
 use std::str::FromStr;
 use std::sync::mpsc::Sender;
+
 use tracer::TraceMode;
 
 use crate::fsm::{Event, EventType};
@@ -47,18 +48,17 @@ pub fn handle_trace(sender: &mut Sender<Box<Event>>, opt: &str, enable: bool) {
 
 /// Descriptor a program argument option
 pub struct ArgOption {
-    pub name : &'static str,
-    pub required : bool,
-    pub with_value: bool
+    pub name: &'static str,
+    pub required: bool,
+    pub with_value: bool,
 }
 
 impl ArgOption {
-
     /// Creates a new option with the specified name.
-    pub fn new(name : &'static str) -> ArgOption {
+    pub fn new(name: &'static str) -> ArgOption {
         ArgOption {
-            name : name,
-            required : false,
+            name: name,
+            required: false,
             with_value: false,
         }
     }

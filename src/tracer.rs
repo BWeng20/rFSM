@@ -1,12 +1,14 @@
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter};
 use std::fmt;
-use log::info;
-use std::str::FromStr;
-use std::collections::{HashMap, HashSet};
-use std::cell::RefCell;
 use std::ops::DerefMut;
+use std::str::FromStr;
+
+use log::info;
+
 use crate::{ArgOption, fsm};
-use crate::fsm::{Event, OrderedSet, State };
+use crate::fsm::{Event, OrderedSet, State};
 
 /// Trace mode for FSM Tracer.
 #[derive(Debug, Clone, PartialEq, Copy, Hash, Eq)]
@@ -20,7 +22,6 @@ pub enum TraceMode {
 }
 
 impl TraceMode {
-
     /// Gets argument-option for Trace-Mode.
     pub fn argument_option() -> ArgOption {
         ArgOption::new("trace").with_value()
