@@ -4,20 +4,22 @@ This folder contains scripts to execute the tests described in [SCXML 1.0 Implem
 
 ## Download and Transform
 
+__To download and transform call the bash script `download_and_transform_tests.sh`__ - _please check the requirements below_
+
+
 The original tests are written in a data-model-agnostic way and 
 need a xsl transformation to (in this case) the ECMA-data-model.<br/>
 W3C delivers a xsl-transformation for this case.
 
-To download and transform call the bash script `download_and_transform_tests.sh`
+The Identifiers of the test are extracted from [https://www.w3.org/Voice/2013/scxml-irp/manifest.xml](https://www.w3.org/Voice/2013/scxml-irp/manifest.xml).
+The script select all _mandatory_ and _automated_ txml-tests. Optional or manual tests are ignored.
+The test files itself are downloaded from [https://www.w3.org/Voice/2013/scxml-irp/](https://www.w3.org/Voice/2013/scxml-irp/).
 
 The script never downloads a file twice, to update to newer versions,
 delete the folder `txml` and call `download_and_transform_tests.sh` again.
 
-The Ids of the test are extracted from manifest.xml, included with the tests from W3C.
-The script select all _mandatory_ and _automated_ txml-tests. Optional or manual tests are ignored.
 
-The xsl seems (afaik) to be usable only with [SAXON](https://github.com/Saxonica/Saxon-HE).<br/>
-The download script tries to download the open-source-version of SAXON
+The xsl seems (afaik) to be usable only with [SAXON](https://github.com/Saxonica/Saxon-HE). The download script tries to download the open-source-version of SAXON
 and call it to transform the W3C scripts. The transformed test are placed in the folder `scxml`.
 
 ### Requirements
