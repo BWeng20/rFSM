@@ -267,4 +267,6 @@ or depending on your OS, `set RUST_LOG=debug`.
 
 ### Automated Testing
 
-For automated tests the binary "test" can be used.
+For automated tests the binary `test` can be used.
+
+For a practical application to the tests of _"W3C SCXML 1.0 Implementation Report"_, see [test/w3c/README.md](test/w3c/README.md).
