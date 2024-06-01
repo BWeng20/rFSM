@@ -4,8 +4,9 @@ use std::collections::HashMap;
 use std::env;
 use std::str::FromStr;
 use std::sync::mpsc::Sender;
+use tracer::TraceMode;
 
-use crate::fsm::{Event, EventType, TraceMode};
+use crate::fsm::{Event, EventType};
 
 pub mod reader;
 
@@ -23,6 +24,7 @@ pub mod scxml_event_io_processor;
 
 mod datamodel;
 mod event_io_processor;
+pub mod tracer;
 
 pub fn handle_trace(sender: &mut Sender<Box<Event>>, opt: &str, enable: bool) {
     match TraceMode::from_str(opt) {

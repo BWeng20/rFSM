@@ -5,11 +5,10 @@ extern crate core;
 
 use std::{io, process, thread, time};
 use std::io::{stdout, Write};
-use std::str::FromStr;
-
-use rfsm::fsm::{Event, EventType, TraceMode};
+use rfsm::fsm::{Event, EventType};
 use rfsm::fsm_executor::FsmExecutor;
-use rfsm::{ArgOption, fsm, handle_trace};
+use rfsm::handle_trace;
+use rfsm::tracer::TraceMode;
 
 /// Loads the specified FSM and prompts for Events.
 #[tokio::main(flavor = "multi_thread")]

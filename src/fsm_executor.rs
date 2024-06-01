@@ -10,8 +10,9 @@ use log::info;
 use crate::{fsm, reader};
 use crate::basic_http_event_io_processor::BasicHTTPEventIOProcessor;
 use crate::event_io_processor::EventIOProcessor;
-use crate::fsm::{Event, TraceMode};
+use crate::fsm::Event;
 use crate::scxml_event_io_processor::ScxmlEventIOProcessor;
+use crate::tracer::TraceMode;
 
 pub struct ExecuterState {
     pub processors: Vec<Box<dyn EventIOProcessor>>,

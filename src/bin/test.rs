@@ -1,4 +1,3 @@
-use std::ffi::OsStr;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::Path;
@@ -6,9 +5,9 @@ use std::process;
 
 #[cfg(feature = "json-config")]
 use serde::Deserialize;
-use yaml_rust::{ScanError, Yaml, YamlLoader};
-use rfsm::ArgOption;
-use rfsm::fsm::{Fsm, TraceMode};
+use yaml_rust::YamlLoader;
+use rfsm::fsm::Fsm;
+use rfsm::tracer::TraceMode;
 
 #[derive( Debug)]
 #[cfg_attr(feature = "json-config", derive(Deserialize))]
