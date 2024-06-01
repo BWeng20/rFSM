@@ -7,6 +7,8 @@ use std::process;
 #[cfg(feature = "json-config")]
 use serde::Deserialize;
 use yaml_rust::{ScanError, Yaml, YamlLoader};
+use rfsm::ArgOption;
+use rfsm::fsm::{Fsm, TraceMode};
 
 #[derive( Debug)]
 #[cfg_attr(feature = "json-config", derive(Deserialize))]
@@ -24,13 +26,13 @@ pub struct EventSpecification {
 
     /// Optional event to receive from FSM after the event.
     shall_send_event:  Option<String>
-
 }
 
 #[derive(Deserialize, Debug)]
 pub struct TestSpecification {
-    file: String,
+    file: Option<String>,
     events: Vec<EventSpecification>,
+    final_configuration: Option<Vec<String>>
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -38,76 +40,113 @@ async fn main() {
     #[cfg(feature = "EnvLog")]
     env_logger::init();
 
-    let (_trace, final_args) = rfsm::get_arguments();
+    let (named_opt, final_args) = rfsm::get_arguments(&[
+        TraceMode::argument_option()
+    ]);
+
+    let trace = TraceMode::from_arguments(&named_opt);
 
     if final_args.len() < 1 {
         println!("Missing argument. Please specify one or more test file(s)");
         process::exit(1);
     }
 
-    run_test_file(final_args[0].as_str());
+    let mut config= Result::Err(());
+    let mut fsm= Result::Err(());
+
+    for arg in final_args {
+        let ext: String;
+        match Path::new(arg.as_str()).extension() {
+            None => {
+                ext = String::new()
+            }
+            Some(oext) => {
+                ext = oext.to_string_lossy().to_string();
+            }
+        }
+        match ext.to_lowercase().as_str() {
+            #[cfg(feature = "yaml-config")]
+            "yaml" | "yml" => {
+                config = load_yaml_config(arg.as_str());
+            }
+            #[cfg(feature = "json-config")]
+            "json" | "js" => {
+                config = load_json_config(arg.as_str());
+            }
+            "scxml" | "xml" => {
+                fsm = load_fsm( arg.as_str() );
+            }
+            &_ => {
+                println!("File '{}' has unsupported extension.", arg);
+                process::exit(1);
+            }
+        }
+    }
+    match config {
+        Ok(test_spec) => {
+            run_test(test_spec);
+        }
+        Err(err) => {
+            println!("Error configuration file.");
+            process::exit(1);
+        }
+    }
 }
 
-pub fn run_test_file(file_path : &str) {
+pub fn load_fsm( file_path : &str ) -> Result<Fsm,()> {
+    todo!();
+}
+
+#[cfg(feature = "yaml-config")]
+pub fn load_yaml_config( file_path : &str ) -> Result<TestSpecification,()> {
     match File::open(file_path) {
         Ok(file) => {
             let mut reader = BufReader::new(file);
 
-            let ext : String;
-            match Path::new(file_path).extension() {
-                None => {
-                    ext =  String::new()
+            let mut yaml = String::new();
+            match reader.read_to_string(&mut yaml) {
+                Ok(_) => {
+                    match YamlLoader::load_from_str(&yaml) {
+                        Ok(doc) => {
+                            todo!()
+                        }
+                        Err(err) => {
+                            println!("Error parsing config file '{}'. {}", file_path, err);
+                            return Result::Err(());
+                        }
+                    }
                 }
-                Some(oext) => {
-                    ext = oext.to_string_lossy().to_string();
+                Err(err) => {
+                    println!("Error reading config file '{}'. {}", file_path, err);
+                    return Result::Err(());
                 }
             }
-            match ext.to_lowercase().as_str() {
-                #[cfg(feature = "yaml-config")]
-                "yaml" | "yml" =>
-                {
-                    let mut yaml = String::new();
-                    match reader.read_to_string(&mut yaml) {
-                        Ok(_) => {
-                            match YamlLoader::load_from_str(&yaml) {
-                                Ok(doc) => {
-                                    todo!()
-                                }
-                                Err(err) => {
-                                    println!("Error parsing test file '{}'. {}", file_path, err);
-                                    process::exit(1);
-                                }
-                            }
-                        }
-                        Err(err) => {
-                            println!("Error reading test file '{}'. {}", file_path, err);
-                            process::exit(1);
-                        }
-                    }
+
+        }
+        Err(err) => {
+            println!("Error reading file. {}", err);
+            return Result::Err(());
+        }
+    }
+}
+
+#[cfg(feature = "json-config")]
+pub fn load_json_config( file_path : &str ) -> Result<TestSpecification,()> {
+    match File::open(file_path) {
+        Ok(file) => {
+            let mut reader = BufReader::new(file);
+            match serde_json::from_reader::<BufReader<File>, TestSpecification>(reader) {
+                Ok(test) => {
+                    return Result::Ok(test);
                 }
-                #[cfg(feature = "json-config")]
-                "json" =>
-                {
-                    let v = serde_json::from_reader::<BufReader<File>, TestSpecification>(reader);
-                    match v {
-                        Ok(test_spec) => {
-                            run_test(test_spec);
-                        }
-                        Err(err) => {
-                            println!("Error deserializing test file '{}'. {}", file_path, err);
-                            process::exit(1);
-                        }
-                    }
-                }
-                _ => {
-                    println!("File '{}' has unsupported extention.", file_path );
-                    process::exit(1);
+                Err(err) => {
+                    return Result::Err(());
                 }
             }
         }
         Err(err) => {
-            println!("Error reading test file. {}", err);
-            process::exit(2);
+            println!("Error reading config file. {}", err);
+            return Result::Err(());
         }
     }
 }

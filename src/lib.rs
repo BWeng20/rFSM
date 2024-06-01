@@ -1,10 +1,11 @@
 extern crate core;
 
+use std::collections::HashMap;
 use std::env;
 use std::str::FromStr;
 use std::sync::mpsc::Sender;
 
-use crate::fsm::{Event, EventType, Trace};
+use crate::fsm::{Event, EventType, TraceMode};
 
 pub mod reader;
 
@@ -24,7 +25,7 @@ mod datamodel;
 mod event_io_processor;
 
 pub fn handle_trace(sender: &mut Sender<Box<Event>>, opt: &str, enable: bool) {
-    match Trace::from_str(opt) {
+    match TraceMode::from_str(opt) {
         Ok(t) => {
             let event = Box::new(Event::trace(t, enable));
             match sender.send(event) {
@@ -42,13 +43,44 @@ pub fn handle_trace(sender: &mut Sender<Box<Event>>, opt: &str, enable: bool) {
     }
 }
 
-pub fn get_arguments() -> (Trace, Vec::<String>) {
+/// Descriptor a program argument option
+pub struct ArgOption {
+    pub name : &'static str,
+    pub required : bool,
+    pub with_value: bool
+}
+
+impl ArgOption {
+
+    /// Creates a new option with the specified name.
+    pub fn new(name : &'static str) -> ArgOption {
+        ArgOption {
+            name : name,
+            required : false,
+            with_value: false,
+        }
+    }
+
+    /// Defines this option as "required".
+    pub fn required(mut self) -> Self {
+        self.required = true;
+        self
+    }
+
+    /// Defines that this option needs a value.
+    pub fn with_value(mut self) -> Self {
+        self.with_value = true;
+        self
+    }
+}
+
+/// Parse program arguments.
+pub fn get_arguments(arguments: &[ArgOption]) -> (HashMap::<&'static str, String>, Vec<String>) {
     let mut final_args = Vec::<String>::new();
 
     let args: Vec<String> = env::args().collect();
     let mut idx = 1;
-    // Default for trace option.
-    let mut trace = Trace::STATES;
+    let mut map = HashMap::new();
 
     // Don't use clap to parse arguments for now to reduce dependencies.
     while idx < args.len() {
@@ -57,29 +89,28 @@ pub fn get_arguments() -> (Trace, Vec::<String>) {
 
         if arg.starts_with("-") {
             let sarg = arg.trim_start_matches('-');
-            match sarg {
-                "trace" => {
-                    if idx >= args.len() {
-                        panic!("Missing arguments");
-                    }
-                    let trace_opt = &args[idx];
-                    idx += 1;
-                    match Trace::from_str(trace_opt) {
-                        Ok(t) => {
-                            trace = t;
+            let mut match_found = false;
+            for opt in arguments {
+                match_found = opt.name == sarg;
+                if match_found {
+                    if opt.with_value {
+                        if idx >= args.len() {
+                            panic!("Missing value for argument '{}'", opt.name);
                         }
-                        Err(_e) => {
-                            panic!("Unsupported trace option {}.", trace_opt);
-                        }
+                        map.insert(opt.name, args[idx].clone());
+                        idx += 1;
+                    } else {
+                        map.insert(opt.name, "".to_string());
                     }
+                    break;
                 }
-                _ => {
-                    panic!("Unsupported option {}", sarg);
-                }
+            }
+            if !match_found {
+                panic!("Unknown option '{}'", arg);
             }
         } else {
             final_args.push(arg.clone());
         }
     }
-    (trace, final_args)
+    (map, final_args)
 }

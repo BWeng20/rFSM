@@ -17,6 +17,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::JoinHandle;
 
 use log::{debug, info};
+use crate::ArgOption;
 
 use crate::datamodel::{Data, Datamodel, DataStore, NULL_DATAMODEL, NULL_DATAMODEL_LC, NullDatamodel, StringData};
 #[cfg(feature = "ECMAScript")]
@@ -538,7 +539,7 @@ impl Event {
         }
     }
 
-    pub fn trace(t: Trace, enable: bool) -> Event {
+    pub fn trace(t: TraceMode, enable: bool) -> Event {
         Event {
             name: format!("trace.{}.{}", t, if enable { "on" } else { "off" }),
             etype: EventType::external,
@@ -680,9 +681,9 @@ impl Debug for Invoke {
     }
 }
 
-
+/// Trace mode for FSM Tracer.
 #[derive(Debug, Clone, PartialEq, Copy, Hash, Eq)]
-pub enum Trace {
+pub enum TraceMode {
     METHODS,
     STATES,
     EVENTS,
@@ -691,23 +692,51 @@ pub enum Trace {
     ALL,
 }
 
-impl Display for Trace {
+impl TraceMode {
+
+    /// Gets argument-option for Trace-Mode.
+    pub fn argument_option() -> ArgOption {
+        ArgOption::new("trace").with_value()
+    }
+
+    /// Parse Trace-mode from program arguments.
+    pub fn from_arguments(named_arguments: &HashMap::<&'static str, String>) -> TraceMode {
+        let mut trace = TraceMode::STATES;
+
+        match named_arguments.get("trace") {
+            None => {}
+            Some(trace_name) => {
+                match TraceMode::from_str(trace_name) {
+                    Ok(opt) => {
+                        trace = opt;
+                    }
+                    Err(_err) => {
+                        panic!("Unknown trace mode '{}'", trace_name)
+                    }
+                }
+            }
+        }
+        trace
+    }
+}
+
+impl Display for TraceMode {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         Debug::fmt(self, f)
     }
 }
 
-impl FromStr for Trace {
+impl FromStr for TraceMode {
     type Err = ();
 
-    fn from_str(input: &str) -> Result<Trace, Self::Err> {
+    fn from_str(input: &str) -> Result<TraceMode, Self::Err> {
         match input.to_lowercase().as_str() {
-            "methods" => Ok(Trace::METHODS),
-            "states" => Ok(Trace::STATES),
-            "events" => Ok(Trace::EVENTS),
-            "arguments" => Ok(Trace::ARGUMENTS),
-            "results" => Ok(Trace::RESULTS),
-            "all" => Ok(Trace::ALL),
+            "methods" => Ok(TraceMode::METHODS),
+            "states" => Ok(TraceMode::STATES),
+            "events" => Ok(TraceMode::EVENTS),
+            "arguments" => Ok(TraceMode::ARGUMENTS),
+            "results" => Ok(TraceMode::RESULTS),
+            "all" => Ok(TraceMode::ALL),
             _ => Err(()),
         }
     }
@@ -715,7 +744,7 @@ impl FromStr for Trace {
 
 /// Trait used to trace methods and
 /// states inside the FSM. What is traced can be controlled by
-/// [Tracer::enable_trace] and [Tracer::disable_trace], see [Trace].
+/// [Tracer::enable_trace] and [Tracer::disable_trace], see [TraceMode].
 pub trait Tracer: Send + Debug {
     fn trace(&self, msg: &str);
 
@@ -726,17 +755,17 @@ pub trait Tracer: Send + Debug {
     fn leave(&self);
 
     /// Enable traces for the specified scope.
-    fn enable_trace(&mut self, flag: Trace);
+    fn enable_trace(&mut self, flag: TraceMode);
 
     /// Disable traces for the specified scope.
-    fn disable_trace(&mut self, flag: Trace);
+    fn disable_trace(&mut self, flag: TraceMode);
 
     /// Return true if the given scape is enabled.
-    fn is_trace(&self, flag: Trace) -> bool;
+    fn is_trace(&self, flag: TraceMode) -> bool;
 
     /// Called by FSM if a method is entered
     fn enter_method(&self, what: &str) {
-        if self.is_trace(Trace::METHODS) {
+        if self.is_trace(TraceMode::METHODS) {
             self.trace(format!(">>> {}", what).as_str());
             self.enter();
         }
@@ -744,7 +773,7 @@ pub trait Tracer: Send + Debug {
 
     /// Called by FSM if a method is exited
     fn exit_method(&self, what: &str) {
-        if self.is_trace(Trace::METHODS) {
+        if self.is_trace(TraceMode::METHODS) {
             self.leave();
             self.trace(format!("<<< {}", what).as_str());
         }
@@ -752,21 +781,21 @@ pub trait Tracer: Send + Debug {
 
     /// Called by FSM if an internal event is send
     fn event_internal_send(&self, what: &Event) {
-        if self.is_trace(Trace::EVENTS) {
+        if self.is_trace(TraceMode::EVENTS) {
             self.trace(format!("Int<- {} #{}", what.name, what.invoke_id).as_str());
         }
     }
 
     /// Called by FSM if an internal event is received
     fn event_internal_received(&self, what: &Event) {
-        if self.is_trace(Trace::EVENTS) {
+        if self.is_trace(TraceMode::EVENTS) {
             self.trace(format!("Int-> {} #{}", what.name, what.invoke_id).as_str());
         }
     }
 
     /// Called by FSM if an external event is send
     fn event_external_send(&self, what: &Event) {
-        if self.is_trace(Trace::EVENTS) {
+        if self.is_trace(TraceMode::EVENTS) {
             self.trace(format!("Ext<- {} #{}", what.name, what.invoke_id).as_str());
         }
     }
@@ -776,7 +805,7 @@ pub trait Tracer: Send + Debug {
         if what.name.starts_with("trace.") {
             let p = what.name.as_str().split('.').collect::<Vec<&str>>();
             if p.len() == 3 {
-                match Trace::from_str(p.get(1).unwrap()) {
+                match TraceMode::from_str(p.get(1).unwrap()) {
                     Ok(t) => {
                         match *p.get(2).unwrap() {
                             "on" | "ON" | "On" => {
@@ -796,7 +825,7 @@ pub trait Tracer: Send + Debug {
                 }
             }
         }
-        if self.is_trace(Trace::EVENTS) {
+        if self.is_trace(TraceMode::EVENTS) {
             self.trace(format!("Ext-> {} #{}", what.name, what.invoke_id).as_str());
         }
     }
@@ -804,7 +833,7 @@ pub trait Tracer: Send + Debug {
 
     /// Called by FSM if a state is entered or left.
     fn trace_state(&self, what: &str, s: &State) {
-        if self.is_trace(Trace::STATES) {
+        if self.is_trace(TraceMode::STATES) {
             if s.name.is_empty() {
                 self.trace(format!("{} #{}", what, s.id).as_str());
             } else {
@@ -826,14 +855,14 @@ pub trait Tracer: Send + Debug {
 
     /// Called by FSM for input arguments in methods.
     fn trace_argument(&self, what: &str, d: &dyn Display) {
-        if self.is_trace(Trace::ARGUMENTS) {
+        if self.is_trace(TraceMode::ARGUMENTS) {
             self.trace(format!("In:{}:{}", what, d).as_str());
         }
     }
 
     /// Called by FSM for results in methods.
     fn trace_result(&self, what: &str, d: &dyn Display) {
-        if self.is_trace(Trace::RESULTS) {
+        if self.is_trace(TraceMode::RESULTS) {
             self.trace(format!("Out:{}:{}", what, d).as_str());
         }
     }
@@ -856,7 +885,7 @@ thread_local! {
 
 #[derive(Debug)]
 pub struct DefaultTracer {
-    pub trace_flags: HashSet<Trace>,
+    pub trace_flags: HashSet<TraceMode>,
 }
 
 impl Tracer for DefaultTracer {
@@ -878,16 +907,16 @@ impl Tracer for DefaultTracer {
         }
     }
 
-    fn enable_trace(&mut self, flag: Trace) {
+    fn enable_trace(&mut self, flag: TraceMode) {
         self.trace_flags.insert(flag);
     }
 
-    fn disable_trace(&mut self, flag: Trace) {
+    fn disable_trace(&mut self, flag: TraceMode) {
         self.trace_flags.remove(&flag);
     }
 
-    fn is_trace(&self, flag: Trace) -> bool {
-        self.trace_flags.contains(&flag) || self.trace_flags.contains(&Trace::ALL)
+    fn is_trace(&self, flag: TraceMode) -> bool {
+        self.trace_flags.contains(&flag) || self.trace_flags.contains(&TraceMode::ALL)
     }
 }
 
@@ -2466,7 +2495,6 @@ impl Fsm {
         todo!()
     }
 
-
     /// #W3C says:
     /// 5.9.1 Conditional Expressions
     /// Conditional expressions are used inside the 'cond' attribute of \<transition\>, \<if\> and \<elseif\>.
@@ -2918,7 +2946,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::sync::mpsc::Sender;
 
-    use crate::{Event, EventType, fsm, fsm_executor, reader, Trace};
+    use crate::{Event, EventType, fsm, fsm_executor, reader, TraceMode};
     use crate::fsm::List;
     use crate::fsm::OrderedSet;
 
@@ -3259,7 +3287,7 @@ mod tests {
         assert!(!sm.is_err(), "FSM shall be parsed");
 
         let mut fsm = sm.unwrap();
-        fsm.tracer.enable_trace(Trace::ALL);
+        fsm.tracer.enable_trace(TraceMode::ALL);
 
         let state = Arc::new(Mutex::new(fsm_executor::ExecuterState::new()));
 

@@ -5,10 +5,11 @@ extern crate core;
 
 use std::{io, process, thread, time};
 use std::io::{stdout, Write};
+use std::str::FromStr;
 
-use rfsm::fsm::{Event, EventType};
+use rfsm::fsm::{Event, EventType, TraceMode};
 use rfsm::fsm_executor::FsmExecutor;
-use rfsm::handle_trace;
+use rfsm::{ArgOption, fsm, handle_trace};
 
 /// Loads the specified FSM and prompts for Events.
 #[tokio::main(flavor = "multi_thread")]
@@ -16,8 +17,11 @@ async fn main() {
     #[cfg(feature = "EnvLog")]
     env_logger::init();
 
-    let (trace, final_args) = rfsm::get_arguments();
+    let (named_opt, final_args) = rfsm::get_arguments(&[
+        TraceMode::argument_option()
+    ]);
 
+    let trace = TraceMode::from_arguments(&named_opt);
 
     if final_args.len() < 1 {
         println!("Missing argument. Please specify one or more scxml file");

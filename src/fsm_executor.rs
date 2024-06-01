@@ -10,7 +10,7 @@ use log::info;
 use crate::{fsm, reader};
 use crate::basic_http_event_io_processor::BasicHTTPEventIOProcessor;
 use crate::event_io_processor::EventIOProcessor;
-use crate::fsm::{Event, Trace};
+use crate::fsm::{Event, TraceMode};
 use crate::scxml_event_io_processor::ScxmlEventIOProcessor;
 
 pub struct ExecuterState {
@@ -67,7 +67,7 @@ impl FsmExecutor {
     }
 
     /// Loads and starts the specified FSM.
-    pub fn execute(&mut self, file_path: &str, trace: Trace) -> Result<(JoinHandle<()>, Sender<Box<Event>>), String> {
+    pub fn execute(&mut self, file_path: &str, trace: TraceMode) -> Result<(JoinHandle<()>, Sender<Box<Event>>), String> {
         info!("Loading FSM from {}", file_path);
 
         // Use reader to parse the scxml file:
