@@ -5,6 +5,7 @@ extern crate core;
 
 use std::{io, process, thread, time};
 use std::io::{stdout, Write};
+
 use rfsm::fsm::{Event, EventType};
 use rfsm::fsm_executor::FsmExecutor;
 use rfsm::handle_trace;
