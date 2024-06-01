@@ -629,7 +629,7 @@ impl ReaderState {
             let parent_state = self.get_current_state();
             parent_state.history.push(state_id);
         }
-        let mut hstate = self.fsm.get_state_by_id_mut(state_id);
+        let hstate = self.fsm.get_state_by_id_mut(state_id);
         // Assign parent manually, as we didn't gave get_or_create_state_with_attributes the parent.
         hstate.parent = self.current.current_state;
 
@@ -987,7 +987,7 @@ impl ReaderState {
             // Find matching "if" level for the new "else if"
             let if_ec = self.get_last_executable_content_entry_for_region(if_id);
             match get_opt_executable_content_as::<If>(if_ec) {
-                Some(mut evc_if) => {
+                Some(evc_if) => {
                     if evc_if.else_content > 0 {
                         // Some higher "if". Go inside else-region.
                         if_id = evc_if.else_content;
@@ -1019,7 +1019,7 @@ impl ReaderState {
         while if_id > 0 {
             let if_ec = self.get_last_executable_content_entry_for_region(if_id);
             match get_opt_executable_content_as::<If>(if_ec) {
-                Some(mut evc_if) => {
+                Some(evc_if) => {
                     if evc_if.else_content > 0 {
                         if_id = evc_if.else_content;
                     } else {
@@ -1168,7 +1168,7 @@ impl ReaderState {
             }
             TAG_INVOKE => {
                 let state = self.get_current_state();
-                let mut invoke = state.invoke.last_mut();
+                let invoke = state.invoke.last_mut();
                 invoke.content = content;
                 if expr.is_some() {
                     invoke.content_expr = expr.unwrap().to_string();
@@ -1380,7 +1380,7 @@ impl ReaderState {
     }
 
     fn get_resolved_path(&self, ps: &String) -> PathBuf {
-        let src = Path::new(ps).clone().to_owned();
+        let src = Path::new(ps).to_owned();
         let parent = Path::new(&self.file).parent();
         match parent {
             Some(parent_path) => {
