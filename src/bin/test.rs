@@ -116,7 +116,7 @@ async fn main() {
         }
     }
     match config {
-        Some(mut test_spec) => {
+        Some(test_spec) => {
             let uc = TestUseCase {
                 fsm: if test_spec.file.is_some()
                 {
@@ -163,7 +163,7 @@ pub fn load_yaml_config(file_path: &str) -> TestSpecification {
             match reader.read_to_string(&mut yaml) {
                 Ok(_) => {
                     match YamlLoader::load_from_str(&yaml) {
-                        Ok(doc) => {
+                        Ok(_doc) => {
                             todo!()
                         }
                         Err(err) => {
@@ -224,11 +224,11 @@ impl Tracer for TestTracer {
 
     fn leave(&self) {}
 
-    fn enable_trace(&mut self, flag: TraceMode) {}
+    fn enable_trace(&mut self, _flag: TraceMode) {}
 
-    fn disable_trace(&mut self, flag: TraceMode) {}
+    fn disable_trace(&mut self, _flag: TraceMode) {}
 
-    fn is_trace(&self, flag: TraceMode) -> bool {
+    fn is_trace(&self, _flag: TraceMode) -> bool {
         true
     }
 
@@ -258,12 +258,12 @@ pub fn run_test(test: TestUseCase) {
     let mut fsm = test.fsm.unwrap();
     fsm.tracer = Box::new(TestTracer::new(current_config.clone()));
     let state = Arc::new(Mutex::new(ExecuterState::new()));
-    let (thread_join, sender) = fsm::start_fsm(fsm, &state);
+    let (thread_join, _sender) = fsm::start_fsm(fsm, &state);
 
     println!("FSM started. Waiting to terminate...");
     let _ = thread_join.join();
 
-    let mut guard = current_config.lock().unwrap();
+    let guard = current_config.lock().unwrap();
     println!("Final Configuration {:?}", guard.values());
 
     match test.specification.final_configuration {
