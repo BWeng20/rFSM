@@ -1,10 +1,12 @@
+use std::{process, thread};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::Path;
-use std::process;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, mpsc, Mutex};
+use std::time::Duration;
 
+use log::{error, info, warn};
 #[cfg(feature = "json-config")]
 use serde::Deserialize;
 #[cfg(feature = "yaml-config")]
@@ -13,7 +15,7 @@ use yaml_rust::YamlLoader;
 use rfsm::{fsm, reader};
 use rfsm::fsm::{Fsm, State};
 use rfsm::fsm_executor::ExecuterState;
-use rfsm::tracer::{TraceMode, Tracer};
+use rfsm::tracer::{DefaultTracer, TraceMode, Tracer};
 
 #[derive(Debug)]
 #[cfg_attr(feature = "json-config", derive(Deserialize))]
@@ -38,6 +40,7 @@ pub struct TestSpecification {
     file: Option<String>,
     events: Vec<EventSpecification>,
     final_configuration: Option<Vec<String>>,
+    timeout_milliseconds: Option<i32>,
 }
 
 #[derive(Debug)]
@@ -205,49 +208,59 @@ pub fn load_json_config(file_path: &str) -> TestSpecification {
 #[derive(Debug)]
 pub struct TestTracer {
     current_config: Arc<Mutex<HashMap<String, String>>>,
+    default_tracer: DefaultTracer,
+
 }
 
 impl TestTracer {
     pub fn new(config: Arc<Mutex<HashMap<String, String>>>) -> TestTracer {
         TestTracer {
-            current_config: config
+            current_config: config,
+            default_tracer: DefaultTracer::new(),
         }
     }
 }
 
 impl Tracer for TestTracer {
     fn trace(&self, msg: &str) {
-        println!("{}", msg);
+        self.default_tracer.trace(msg);
     }
 
-    fn enter(&self) {}
+    fn enter(&self) {
+        self.default_tracer.enter()
+    }
 
-    fn leave(&self) {}
+    fn leave(&self) {
+        self.default_tracer.leave()
+    }
 
-    fn enable_trace(&mut self, _flag: TraceMode) {}
+    fn enable_trace(&mut self, flag: TraceMode) {
+        self.default_tracer.enable_trace(flag);
+    }
 
-    fn disable_trace(&mut self, _flag: TraceMode) {}
+    fn disable_trace(&mut self, flag: TraceMode) {
+        self.default_tracer.disable_trace(flag);
+    }
 
-    fn is_trace(&self, _flag: TraceMode) -> bool {
-        true
+    fn is_trace(&self, flag: TraceMode) -> bool {
+        self.default_tracer.is_trace(flag)
     }
 
     fn trace_enter_state(&self, s: &State) {
-        self.trace_state("Enter", s);
         let mut guard = self.current_config.lock().unwrap();
         guard.insert(s.name.clone(), s.name.clone());
+        self.default_tracer.trace_enter_state(s);
     }
 
     fn trace_exit_state(&self, s: &State) {
         self.trace_state("Exit", s);
         let mut guard = self.current_config.lock().unwrap();
         guard.remove(s.name.as_str());
+        self.default_tracer.trace_exit_state(s);
     }
 }
 
 pub fn run_test(test: TestUseCase) {
-    println!("{:?}", test);
-
     if test.fsm.is_none() {
         abort_test(format!("No FSM given in test '{}'", test.name))
     }
@@ -260,25 +273,56 @@ pub fn run_test(test: TestUseCase) {
     let state = Arc::new(Mutex::new(ExecuterState::new()));
     let (thread_join, _sender) = fsm::start_fsm(fsm, &state);
 
-    println!("FSM started. Waiting to terminate...");
+    let (sender, receiver) = mpsc::channel();
+
+    if test.specification.timeout_milliseconds.is_some() {
+        let timeout = test.specification.timeout_milliseconds.unwrap();
+
+        if timeout > 0 {
+            let test_name = test.name.clone();
+
+            let timer = thread::spawn(move || {
+                match receiver.recv_timeout(Duration::from_millis(timeout as u64)) {
+                    Ok(r) => {
+                        // All ok, FSM terminated in time.
+                    }
+                    Err(mpsc::RecvTimeoutError::Disconnected) => {
+                        // Disconnected, also ok
+                    }
+                    Err(mpsc::RecvTimeoutError::Timeout) => {
+                        abort_test(format!("[{}] ==> FSM timed out after {} milliseconds", test_name, timeout))
+                    }
+                }
+            });
+        }
+    }
+
+    info!("FSM started. Waiting to terminate...");
     let _ = thread_join.join();
 
+    // Inform watchdog
+    match sender.send("finished") {
+        Ok(_) => {}
+        Err(err) => {
+            warn!("Failed to send notification to watchdog. {}", err)
+        }
+    }
+
     let guard = current_config.lock().unwrap();
-    println!("Final Configuration {:?}", guard.values());
 
     match test.specification.final_configuration {
         None => {}
         Some(fc) => {
             for fc_name in fc {
                 if guard.contains_key(fc_name.as_str()) {
-                    println!("[{}] ==> Final state '{}' reached", test.name, fc_name);
+                    info!("[{}] ==> Final state '{}' reached", test.name, fc_name);
                 } else {
-                    abort_test(format!("[{}] ==> Expected final state '{}' not reached", test.name, fc_name));
+                    abort_test(format!("[{}] ==> Expected final state '{}' not reached. Final configuration: {:?}", test.name, fc_name
+                                       , guard.values()));
                 }
             }
         }
     }
-
 
     process::exit(0);
 }
@@ -286,6 +330,6 @@ pub fn run_test(test: TestUseCase) {
 /// Aborts the test with 1 exit code.\
 /// Never returns.
 pub fn abort_test(message: String) -> ! {
-    println!("Fatal Error: {}", message);
+    error!("Fatal Error: {}", message);
     process::exit(1);
 }

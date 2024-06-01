@@ -554,7 +554,7 @@ impl ReaderState {
         let url_result = reqwest::Url::parse(uri);
         match url_result {
             Ok(url) => {
-                println!("URL {}", url);
+                debug!("read from URL {}", url);
 
                 let resp = reqwest::blocking::get(url);
                 match resp {
@@ -1517,6 +1517,8 @@ pub fn read_from_xml(xml: String) -> Result<Box<Fsm>, String> {
 
 #[cfg(test)]
 mod tests {
+    use log::debug;
+
     #[test]
     #[should_panic]
     fn initial_attribute_should_panic() {
@@ -1542,12 +1544,12 @@ mod tests {
 
         let mut b = false;
         for s in &fsm.states {
-            println!("State {}", s.name);
+            debug!("State {}", s.name);
             for tid in s.transitions.iterator() {
                 let tr = fsm.transitions.get(tid).unwrap();
-                println!(" Transition #{} content {}", tr.id, tr.content);
+                debug!(" Transition #{} content {}", tr.id, tr.content);
                 if tr.content != 0 {
-                    println!(" -> {:?}", fsm.executableContent.get(&tr.content).unwrap());
+                    debug!(" -> {:?}", fsm.executableContent.get(&tr.content).unwrap());
                     b = true;
                 }
             }

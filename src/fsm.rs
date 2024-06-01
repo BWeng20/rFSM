@@ -2053,7 +2053,7 @@ impl Fsm {
     ///                 targets.union(getEffectiveTargetStates(s.transition))
     ///         else:
     ///             targets.add(s)
-    ///     return targets
+    ///     return targets;
     /// ```
     #[allow(non_snake_case)]
     fn getEffectiveTargetStates(&self, datamodel: &mut dyn Datamodel, transition: &Transition) -> OrderedSet<StateId> {

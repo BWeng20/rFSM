@@ -4,6 +4,8 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 
+use log::info;
+
 use crate::event_io_processor::EventIOProcessor;
 use crate::fsm::{ExecutableContentId, Fsm, GlobalData, StateId};
 
@@ -155,7 +157,7 @@ impl Datamodel for NullDatamodel {
     fn clear(self: &mut NullDatamodel) {}
 
     fn log(self: &mut NullDatamodel, msg: &str) {
-        println!("Log: {}", msg);
+        info!("Log: {}", msg);
     }
 
     fn execute(&mut self, _fsm: &Fsm, _script: &str) -> String {

@@ -438,7 +438,6 @@ impl ExecutableContent for SendParameters {
     /// If unable to dispatch, place "error.communication" in internal queue
     /// If target is not supported, place "error.execution" in internal queue
     fn execute(&self, datamodel: &mut dyn Datamodel, fsm: &Fsm) {
-        println!("Executing SEND");
         let target;
         if self.target.is_empty()
         {
@@ -508,10 +507,8 @@ impl ExecutableContent for SendParameters {
                             invoke_id: 0,
                             data: None,
                         });
-                        println!(" Send {}", event.name);
                         let _ignored = sender.send(event);
                     });
-                    println!("Scheduled Send (delay {}ms)", delay_ms);
                 }
             }
         }

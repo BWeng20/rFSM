@@ -20,7 +20,7 @@ The xsl seems (afaik) to be usable only with [SAXON](https://github.com/Saxonica
 The download script tries to download the open-source-version of SAXON
 and call it to transform the W3C scripts. The transformed test are placed in the folder `scxml`.
 
-### Requierments
+### Requirements
 + __bash__ To execute the script. In MS-Windows you can use __wsl__.
 + __java__ (at least 1.9, check SAXON documention in case of issues)
 + __curl__ (to download SAXON and the test sources)
@@ -30,22 +30,21 @@ and call it to transform the W3C scripts. The transformed test are placed in the
 
 ## Running the tests
 
-TODO
+After the tests are downloaded and transformed you can run them with the script
+`execute_tests.sh`. <br/>
+The script will execute all _*.scxml_ files in folder _scxml_.
+
+It will print the progress to the console.
+Output of the tests is redirected to files in sub-folder "logs".
+
+The script needs a release-build of the binary `test` in `target/release`. 
+You can build it with `cargo build --release`
+
+The script writes also the Report-file, that is linked below.
 
 ## Current status
 
 The following table gives the current test result for rFSM:
 
-| Test | Conformance | Result |
-|------|-------------|--------|
-| 355  | mandatory   |        |
-| 576  | mandatory   |        |
-| 364  | mandatory   |        |
-| 372  | mandatory   |        |
-|      |             |        |
-|      |             |        |
-|      |             |        |
-|      |             |        |
-|      |             |        |
-
+[REPORT.MD](REPORT.MD)
 

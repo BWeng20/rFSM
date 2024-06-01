@@ -5,6 +5,8 @@ use std::env;
 use std::str::FromStr;
 use std::sync::mpsc::Sender;
 
+use log::error;
+
 use tracer::TraceMode;
 
 use crate::fsm::{Event, EventType};
@@ -36,12 +38,12 @@ pub fn handle_trace(sender: &mut Sender<Box<Event>>, opt: &str, enable: bool) {
                     // ok
                 }
                 Err(e) => {
-                    eprintln!("Error sending trace event: {}", e);
+                    error!("Error sending trace event: {}", e);
                 }
             }
         }
         Err(_e) => {
-            println!("Unknown trace option. Use one of:\n methods\n states\n events\n arguments\n results\n all\n");
+            eprintln!("Unknown trace option. Use one of:\n methods\n states\n events\n arguments\n results\n all\n");
         }
     }
 }

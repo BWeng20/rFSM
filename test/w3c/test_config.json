@@ -1,4 +1,5 @@
 { "file": null,
   "final_configuration": [ "pass" ],
-  "events": []
+  "events": [],
+  "timeout_milliseconds": 3000
 }
