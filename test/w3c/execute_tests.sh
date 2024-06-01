@@ -9,9 +9,12 @@ RFSM_BIN=../../target/debug/test
 
 echo "======================================================="
 
+export RUST_LOG=debug
+export RUST_BACKTRACE=1
+
 for TEST_FILE in scxml/*.scxml; do
   echo "Testing $TEST_FILE"
-  $RFSM_BIN $TEST_FILE
+  $RFSM_BIN -trace all test_config.json "$TEST_FILE"
 done
 
 echo "======================================================="
