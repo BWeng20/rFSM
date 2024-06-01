@@ -5,7 +5,10 @@ use std::process;
 
 #[cfg(feature = "json-config")]
 use serde::Deserialize;
+
+#[cfg(feature = "yaml-config")]
 use yaml_rust::YamlLoader;
+
 use rfsm::fsm::Fsm;
 use rfsm::tracer::TraceMode;
 
@@ -27,7 +30,8 @@ pub struct EventSpecification {
     shall_send_event:  Option<String>
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Debug)]
+#[cfg_attr(feature = "json-config", derive(Deserialize))]
 pub struct TestSpecification {
     file: Option<String>,
     events: Vec<EventSpecification>,
@@ -64,13 +68,26 @@ async fn main() {
             }
         }
         match ext.to_lowercase().as_str() {
-            #[cfg(feature = "yaml-config")]
             "yaml" | "yml" => {
-                config = load_yaml_config(arg.as_str());
+                #[cfg(feature = "yaml-config")]
+                {
+                    config = load_yaml_config(arg.as_str());
+                }
+                #[cfg(not(feature = "yaml-config"))]
+                {
+                    panic!("feature 'yaml-config' is not configured. Can't load '{}'", arg);
+                }
+
             }
-            #[cfg(feature = "json-config")]
             "json" | "js" => {
-                config = load_json_config(arg.as_str());
+                #[cfg(feature = "json-config")]
+                {
+                    config = load_json_config(arg.as_str());
+                }
+                #[cfg(not(feature = "json-config"))]
+                {
+                    panic!("feature 'json-config' is not configured. Can't load '{}'", arg);
+                }
             }
             "scxml" | "xml" => {
                 fsm = load_fsm( arg.as_str() );
@@ -85,8 +102,8 @@ async fn main() {
         Ok(test_spec) => {
             run_test(test_spec);
         }
-        Err(err) => {
-            println!("Error configuration file.");
+        Err(_err) => {
+            println!("Error in test specification.");
             process::exit(1);
         }
     }
@@ -133,7 +150,7 @@ pub fn load_yaml_config( file_path : &str ) -> Result<TestSpecification,()> {
 pub fn load_json_config( file_path : &str ) -> Result<TestSpecification,()> {
     match File::open(file_path) {
         Ok(file) => {
-            let mut reader = BufReader::new(file);
+            let reader = BufReader::new(file);
             match serde_json::from_reader::<BufReader<File>, TestSpecification>(reader) {
                 Ok(test) => {
                     return Result::Ok(test);

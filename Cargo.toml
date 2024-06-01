@@ -14,8 +14,8 @@ default = ["ECMAScript", "EnvLog", "BasicHttpEventIOProcessor", "json-config", "
 ECMAScript = ["boa_engine"]
 EnvLog = ["env_logger"]
 BasicHttpEventIOProcessor = ["hyper", "http-body-util", "hyper-util", "form_urlencoded"]
-json-config = [ "yaml-rust" ]
-yaml-config = [ "serde_json" ]
+yaml-config = [ "yaml-rust" ]
+json-config = [ "serde_json" ]
 
 [dependencies]
 log = "0.4.0"
