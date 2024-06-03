@@ -7,8 +7,10 @@ use std::sync::{Arc, mpsc, Mutex};
 use std::time::Duration;
 
 use log::{error, info, warn};
+
 #[cfg(feature = "json-config")]
 use serde::Deserialize;
+
 #[cfg(feature = "yaml-config")]
 use yaml_rust::YamlLoader;
 

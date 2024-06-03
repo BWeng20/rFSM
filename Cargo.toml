@@ -10,12 +10,12 @@ name = "rfsm"
 path = "src/lib.rs"
 
 [features]
-default = ["ECMAScript", "EnvLog", "BasicHttpEventIOProcessor", "json-config", "yaml-config"]
+default = [ "BasicHttpEventIOProcessor", "ECMAScript", "EnvLog", "json-config", "yaml-config"]
 ECMAScript = ["boa_engine"]
 EnvLog = ["env_logger"]
 BasicHttpEventIOProcessor = ["hyper", "http-body-util", "hyper-util", "form_urlencoded"]
 yaml-config = [ "yaml-rust" ]
-json-config = [ "serde_json" ]
+json-config = [ "serde", "serde_json", "serde/serde_derive" ]
 
 [dependencies]
 log = "0.4.0"
@@ -34,7 +34,7 @@ tokio = { version = "1.28.2", features = ["full"] }
 form_urlencoded = { version = "1.2.1", optional = true }
 serde_json = { version = "1.0.117", optional = true }
 yaml-rust = { version = "0.4.5", optional = true }
-serde = "1.0"
+serde = { version = "1.0", optional = true }
 
 [profile.dev.package."*"]
 opt-level = "z"

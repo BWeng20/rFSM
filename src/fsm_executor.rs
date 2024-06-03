@@ -8,7 +8,10 @@ use std::thread::JoinHandle;
 use log::info;
 
 use crate::{fsm, reader};
+
+#[cfg(feature = "BasicHttpEventIOProcessor")]
 use crate::basic_http_event_io_processor::BasicHTTPEventIOProcessor;
+
 use crate::event_io_processor::EventIOProcessor;
 use crate::fsm::Event;
 use crate::scxml_event_io_processor::ScxmlEventIOProcessor;
