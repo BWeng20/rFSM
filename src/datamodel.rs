@@ -46,6 +46,9 @@ pub trait Datamodel {
     /// Sets a global variable.
     fn set(&mut self, name: &str, data: Box<dyn Data>);
 
+    /// Execute an assign expression.
+    fn assign(&mut self, fsm: &Fsm, left_expr: &str, right_expr: &str);
+
     /// Gets a global variable.
     fn get(&self, name: &str) -> Option<&dyn Data>;
 
@@ -139,6 +142,10 @@ impl Datamodel for NullDatamodel {
     fn initializeDataModel(self: &mut Self, _fsm: &mut Fsm, _dataState: StateId) {}
 
     fn set(self: &mut NullDatamodel, _name: &str, _data: Box<dyn Data>) {
+        // nothing to do
+    }
+
+    fn assign(self: &mut NullDatamodel, _fsm: &Fsm, _left_expr: &str, _right_expr: &str) {
         // nothing to do
     }
 

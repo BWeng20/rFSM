@@ -2,7 +2,7 @@
 //! See [W3C:The ECMAScript Data Model](https://www.w3.org/TR/scxml/#ecma-profile).
 //! See [Github:Boa Engine](https://github.com/boa-dev/boa).
 
-use std::collections::{HashMap, LinkedList};
+use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -13,7 +13,7 @@ use log::{debug, error, info, warn};
 
 use crate::datamodel::{BooleanData, Data, Datamodel, DataStore, EmptyData, FloatData, StringData};
 use crate::event_io_processor::{EventIOProcessor, SYS_IO_PROCESSORS};
-use crate::executable_content::{DefaultExecutableContentTracer, ExecutableContentTracer};
+use crate::executable_content::{DefaultExecutableContentTracer, ExecutableContent, ExecutableContentTracer};
 use crate::fsm::{ExecutableContentId, Fsm, GlobalData, State, StateId};
 
 pub const ECMA_SCRIPT: &str = "ECMAScript";
@@ -30,7 +30,6 @@ pub struct ECMAScriptDatamodel {
     pub context: Context,
     pub tracer: Option<Box<dyn ExecutableContentTracer>>,
     pub io_processors: HashMap<String, Box<dyn EventIOProcessor>>,
-    pub stack: LinkedList<(String, Option<Box<dyn Data>>)>,
 }
 
 fn js_to_string(jv: &JsValue, ctx: &mut Context) -> String {
@@ -65,17 +64,12 @@ impl ECMAScriptDatamodel {
             context: Context::default(),
             tracer: Some(Box::new(DefaultExecutableContentTracer::new())),
             io_processors: HashMap::new(),
-            stack: LinkedList::new(),
         };
         e
     }
 
-
     fn execute_internal(&mut self, _fsm: &Fsm, script: &str) -> String {
         let mut r: String = "".to_string();
-
-        let stack_pos = self.stack.len();
-        self.update_data();
 
         let result = self.context.eval(script);
         match result {
@@ -88,87 +82,8 @@ impl ECMAScriptDatamodel {
                 error!("Script Error {}", e.display());
             }
         }
-        while stack_pos > self.stack.len()
-        {
-            self.pop_property();
-        }
 
         r
-    }
-
-    fn update_data(&mut self) {
-        // Set all (simple) global variables.
-        let mut ll = HashMap::new();
-        for (name, data) in &self.data.values
-        {
-            // @TODO: push only changed data
-            ll.insert(name.clone(), data.get_copy());
-        }
-
-        let it = ll.into_iter();
-        it.for_each(move |(name, data)| {
-            self.push_data(name.as_str(), data);
-        });
-    }
-
-    /// Sets a data-property, saving the current state  on stack.
-    /// Property will be restored with the matching "pop_property"
-    /// If the property is not available he next "pop_property" will remove it.
-    fn push_data(&mut self, name: &str, data: Box<dyn Data>)
-    {
-        match self.data.values.remove(name) {
-            Some(val) => {
-                self.stack.push_back((name.to_string(), Some(val)));
-            }
-            None => {
-                self.stack.push_back((name.to_string(), None));
-            }
-        }
-
-        let js: JsValue;
-        if data.is_numeric() {
-            js = JsValue::Rational(data.as_number());
-        } else {
-            js = JsValue::String(JsString::new(data.to_string()));
-        }
-        // @TODO: handle also complex data.
-        self.context.register_global_property(name, js, Attribute::all());
-        self.data.values.insert(name.to_string(), data);
-    }
-
-    /// Sets a property, saving the current state  on stack.
-    /// Property will be restored with the matching "pop_property".
-    /// If the property is not available he next "pop_property" will remove it.
-    fn push_property(&mut self, name: &str, data: &str)
-    {
-        match self.data.values.remove(name) {
-            Some(val) => {
-                self.stack.push_back((name.to_string(), Some(val)));
-            }
-            None => {
-                self.stack.push_back((name.to_string(), None));
-            }
-        }
-        self.data.values.insert(name.to_string(), Box::new(StringData::new(data)));
-        self.context.register_global_property(name, JsString::new(data), Attribute::all());
-    }
-
-    /// Pops the last property from stack, restoring it.
-    fn pop_property(&mut self)
-    {
-        match self.stack.pop_back() {
-            Some((name, value)) => {
-                match value {
-                    None => {
-                        self.data.values.remove(name.as_str());
-                    }
-                    Some(val) => {
-                        self.data.values.insert(name, val);
-                    }
-                }
-            }
-            None => {}
-        }
     }
 
     fn to_data(ctx: &mut Context, value: &JsValue) -> Box<dyn Data>
@@ -199,6 +114,16 @@ impl ECMAScriptDatamodel {
                 todo!()
             }
         }
+    }
+
+    fn execute_content(&mut self, fsm: &Fsm, e: &dyn ExecutableContent) {
+        match &mut self.tracer {
+            Some(t) => {
+                e.trace(t.as_mut(), fsm);
+            }
+            None => {}
+        }
+        e.execute(self, fsm);
     }
 }
 
@@ -284,6 +209,11 @@ impl Datamodel for ECMAScriptDatamodel {
         self.context.register_global_property(name, JsString::new(str_val), Attribute::all());
     }
 
+    fn assign(self: &mut ECMAScriptDatamodel, fsm: &Fsm, left_expr: &str, right_expr: &str) {
+        let exp = format!("{}={}", left_expr, right_expr);
+        let _ = self.context.eval(exp);
+    }
+
     fn get(self: &ECMAScriptDatamodel, name: &str) -> Option<&dyn Data> {
         match self.data.get(name) {
             Some(data) => {
@@ -338,7 +268,6 @@ impl Datamodel for ECMAScriptDatamodel {
                                 Some(item) => {
                                     let str_val = js_to_string(&item, &mut self.context);
                                     debug!("ForEach: #{} {}", idx, str_val.as_str() );
-                                    self.push_property(item_name, str_val.as_str());
                                     self.context.register_global_property(item_name, item, Attribute::all());
                                     if !index.is_empty() {
                                         self.context.register_global_property(index, idx, Attribute::all());
@@ -365,7 +294,8 @@ impl Datamodel for ECMAScriptDatamodel {
 
 
     fn execute_condition(&mut self, fsm: &Fsm, script: &str) -> Result<bool, String> {
-        match bool::from_str(self.execute_internal(fsm, script).as_str()) {
+        let r = self.execute_internal(fsm, script);
+        match bool::from_str(r.as_str()) {
             Ok(v) => Ok(v),
             Err(e) => Err(e.to_string()),
         }
@@ -374,13 +304,7 @@ impl Datamodel for ECMAScriptDatamodel {
     #[allow(non_snake_case)]
     fn executeContent(&mut self, fsm: &Fsm, content_id: ExecutableContentId) {
         for (_idx, e) in fsm.executableContent.get(&content_id).unwrap().iter().enumerate() {
-            match &mut self.tracer {
-                Some(t) => {
-                    e.trace(t.as_mut(), fsm);
-                }
-                None => {}
-            }
-            e.execute(self, fsm);
+            self.execute_content(fsm, e.as_ref());
         }
     }
 }
