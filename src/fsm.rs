@@ -1344,7 +1344,7 @@ impl Fsm {
 
                 transition.sort_by(&|t1: &&Transition, t2: &&Transition| { self.transition_document_order(t1, t2) });
                 for t in transition {
-                    if (!t.events.is_empty()) && self.nameMatch(&t.events, &event.name) {
+                    if (!t.events.is_empty()) && t.nameMatch(&event.name) {
                         condT.push(t.id);
                     }
                 }
@@ -2271,12 +2271,6 @@ impl Fsm {
         }
     }
 
-    #[allow(non_snake_case)]
-    fn nameMatch(&self, events: &Vec<String>, name: &String) -> bool
-    {
-        events.contains(name)
-    }
-
     /// Converts a set of ids to list of references.
     fn set_to_state_list(&self, state_ids: &OrderedSet<StateId>) -> List<&State> {
         let mut l = List::new();
@@ -2559,6 +2553,7 @@ pub struct Transition {
 
     // TODO: Possibly we need some type to express event ids
     pub events: Vec<String>,
+    pub wildcard: bool,
     pub cond: Option<String>,
     pub source: StateId,
     pub target: Vec<StateId>,
@@ -2583,12 +2578,19 @@ impl Transition {
             id: idc,
             doc_id: 0,
             events: vec![],
+            wildcard: false,
             cond: None,
             source: 0,
             target: vec![],
             transition_type: TransitionType::Internal,
             content: 0,
         }
+    }
+
+    #[allow(non_snake_case)]
+    fn nameMatch(&self, name: &String) -> bool
+    {
+        self.wildcard || self.events.contains(name)
     }
 }
 
