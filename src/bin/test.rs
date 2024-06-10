@@ -7,10 +7,8 @@ use std::sync::{Arc, mpsc, Mutex};
 use std::time::Duration;
 
 use log::{error, info, warn};
-
 #[cfg(feature = "json-config")]
 use serde::Deserialize;
-
 #[cfg(feature = "yaml-config")]
 use yaml_rust::YamlLoader;
 
@@ -50,6 +48,7 @@ pub struct TestUseCase {
     name: String,
     specification: TestSpecification,
     fsm: Option<Box<Fsm>>,
+    trace_mode: TraceMode,
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -107,7 +106,6 @@ async fn main() {
             "scxml" | "xml" => {
                 match load_fsm(arg.as_str()) {
                     Ok(mut fsm_loaded) => {
-                        fsm_loaded.tracer.enable_trace(trace);
                         fsm = Some(fsm_loaded);
                     }
                     Err(_) => {
@@ -145,6 +143,7 @@ async fn main() {
                 },
                 specification: test_spec,
                 name: test_spec_file,
+                trace_mode: trace,
             };
             run_test(uc);
         }
@@ -269,9 +268,9 @@ pub fn run_test(test: TestUseCase) {
 
     let current_config = Arc::new(Mutex::new(HashMap::new()));
 
-
     let mut fsm = test.fsm.unwrap();
     fsm.tracer = Box::new(TestTracer::new(current_config.clone()));
+    fsm.tracer.enable_trace(test.trace_mode);
     let state = Arc::new(Mutex::new(ExecuterState::new()));
     let (thread_join, _sender) = fsm::start_fsm(fsm, &state);
 
