@@ -769,6 +769,7 @@ impl ReaderState {
         let event = attr.get(TAG_EVENT);
         if event.is_some() {
             t.events = event.unwrap().split_whitespace().map(|s| { s.to_string() }).collect();
+            t.wildcard = t.events.contains(&"*".to_string());
         }
 
         let cond = attr.get(ATTR_COND);

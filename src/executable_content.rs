@@ -9,7 +9,7 @@ use regex::Regex;
 
 use crate::{Event, EventType};
 use crate::datamodel::{Datamodel, SCXML_EVENT_PROCESSOR, ToAny};
-use crate::fsm::{ExecutableContentId, Fsm};
+use crate::fsm::{ExecutableContentId, Fsm, vec_to_string};
 
 pub const TARGET_INTERNAL: &str = "_internal";
 pub const TARGET_SCXML_EVENT_PROCESSOR: &str = "http://www.w3.org/TR/scxml/#SCXMLEventProcessor";
@@ -166,16 +166,16 @@ impl Debug for Assign {
 }
 
 impl ExecutableContent for Assign {
-    fn execute(&self, _datamodel: &mut dyn Datamodel, _fsm: &Fsm) {
-        todo!()
+    fn execute(&self, datamodel: &mut dyn Datamodel, fsm: &Fsm) {
+        datamodel.assign(fsm, &self.location.as_str(), &self.expr);
     }
 
     fn get_type(&self) -> &str {
         TYPE_ASSIGN
     }
 
-    fn trace(&self, _tracer: &mut dyn ExecutableContentTracer, _fsm: &Fsm) {
-        todo!()
+    fn trace(&self, tracer: &mut dyn ExecutableContentTracer, _fsm: &Fsm) {
+        tracer.print_name_and_attributes(self, &[("location", &self.location), ("expr", &self.expr)]);
     }
 }
 
@@ -207,7 +207,7 @@ impl ExecutableContent for Raise {
     }
 
     fn trace(&self, tracer: &mut dyn ExecutableContentTracer, _fsm: &Fsm) {
-        tracer.print_name_and_attributes(self, &[("raise", &"".to_string())]);
+        tracer.print_name_and_attributes(self, &[("event", &self.event)]);
     }
 }
 
@@ -230,7 +230,7 @@ impl Debug for Cancel {
 }
 
 impl ExecutableContent for Cancel {
-    fn execute(&self, _datamodel: &mut dyn Datamodel, _fsm: &Fsm) {
+    fn execute(&self, datamodel: &mut dyn Datamodel, fsm: &Fsm) {
         todo!()
     }
 
@@ -238,11 +238,14 @@ impl ExecutableContent for Cancel {
         TYPE_CANCEL
     }
 
-    fn trace(&self, _tracer: &mut dyn ExecutableContentTracer, _fsm: &Fsm) {
-        todo!()
+    fn trace(&self, tracer: &mut dyn ExecutableContentTracer, _fsm: &Fsm) {
+        tracer.print_name_and_attributes(self,
+                                         &[
+                                             ("sendid", &self.send_id),
+                                             ("sendidexpr", &self.send_id_expr)
+                                         ]);
     }
 }
-
 
 impl Script {
     pub fn new() -> Script {
@@ -263,8 +266,9 @@ impl ExecutableContent for Script {
         TYPE_SCRIPT
     }
 
-    fn trace(&self, _tracer: &mut dyn ExecutableContentTracer, _fsm: &Fsm) {
-        todo!()
+    fn trace(&self, tracer: &mut dyn ExecutableContentTracer, _fsm: &Fsm) {
+        // TODO: Shall we print any sub-content?
+        tracer.print_name_and_attributes(self, &[("content", &vec_to_string(&self.content))]);
     }
 }
 
