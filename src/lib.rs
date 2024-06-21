@@ -28,6 +28,8 @@ pub mod scxml_event_io_processor;
 mod datamodel;
 mod event_io_processor;
 pub mod tracer;
+pub mod test_tracer;
+pub mod test;
 
 pub fn handle_trace(sender: &mut Sender<Box<Event>>, opt: &str, enable: bool) {
     match TraceMode::from_str(opt) {
@@ -79,7 +81,7 @@ impl ArgOption {
 }
 
 /// Parse program arguments.
-pub fn get_arguments(arguments: &[ArgOption]) -> (HashMap::<&'static str, String>, Vec<String>) {
+pub fn get_arguments(arguments: &[&ArgOption]) -> (HashMap::<&'static str, String>, Vec<String>) {
     let mut final_args = Vec::<String>::new();
 
     let args: Vec<String> = env::args().collect();

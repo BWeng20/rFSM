@@ -230,7 +230,7 @@ impl Debug for Cancel {
 }
 
 impl ExecutableContent for Cancel {
-    fn execute(&self, datamodel: &mut dyn Datamodel, fsm: &Fsm) {
+    fn execute(&self, _datamodel: &mut dyn Datamodel, _fsm: &Fsm) {
         todo!()
     }
 
@@ -478,7 +478,7 @@ impl ExecutableContent for SendParameters {
 
         if target.is_empty()
         {
-            datamodel.global().internalQueue.enqueue(Event::error("execution"));
+            datamodel.internal_error_execution();
         } else {
             let delay_ms;
             if !self.delay_expr.is_empty() {
@@ -489,12 +489,12 @@ impl ExecutableContent for SendParameters {
             }
             if target.eq(TARGET_INTERNAL) {
                 // Can't send timers via internal queue
-                datamodel.global().internalQueue.enqueue(Event::error("execution"));
+                datamodel.internal_error_execution();
             } else {
                 if delay_ms < 0
                 {
                     // Delay is invalid
-                    datamodel.global().internalQueue.enqueue(Event::error("execution"));
+                    datamodel.internal_error_execution();
                 } else {
                     let location =
                         datamodel.get_io_processors().get_mut(SCXML_EVENT_PROCESSOR).map_or(

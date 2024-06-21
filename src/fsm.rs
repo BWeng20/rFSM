@@ -10,6 +10,7 @@ use std::hash::Hash;
 use std::ops::DerefMut;
 use std::slice::Iter;
 use std::str::FromStr;
+use std::string::ToString;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -17,7 +18,7 @@ use std::thread::JoinHandle;
 
 use log::{debug, info};
 
-use crate::datamodel::{Data, Datamodel, DataStore, NULL_DATAMODEL, NULL_DATAMODEL_LC, NullDatamodel, StringData};
+use crate::datamodel::{Data, Datamodel, DataStore, NULL_DATAMODEL, NULL_DATAMODEL_LC, NullDatamodel};
 #[cfg(feature = "ECMAScript")]
 use crate::ecma_script_datamodel::{ECMA_SCRIPT_LC, ECMAScriptDatamodel};
 use crate::event_io_processor::EventIOProcessor;
@@ -168,8 +169,9 @@ impl<T: Clone + PartialEq> List<T> {
     }
 
     pub fn sort<F>(&self, compare: &F) -> List<T>
-        where
-            F: Fn(&T, &T) -> std::cmp::Ordering + ?Sized {
+    where
+        F: Fn(&T, &T) -> std::cmp::Ordering + ?Sized,
+    {
         let mut t = List {
             data: self.data.clone()
         };
@@ -325,8 +327,9 @@ impl<T: Clone + PartialEq> OrderedSet<T> {
     }
 
     pub fn sort<F>(&self, compare: &F) -> List<T>
-        where
-            F: Fn(&T, &T) -> std::cmp::Ordering + ?Sized {
+    where
+        F: Fn(&T, &T) -> std::cmp::Ordering + ?Sized,
+    {
         let mut t = List {
             data: self.data.clone()
         };
@@ -519,12 +522,6 @@ impl ToString for Event {
     }
 }
 
-impl Data for Event {
-    fn get_copy(&self) -> Box<dyn Data> {
-        Event::get_copy(self)
-    }
-}
-
 impl Event {
     pub fn new(prefix: &str, id: &String, ev_data: &Option<DoneData>) -> Event {
         Event {
@@ -561,6 +558,19 @@ impl Event {
             origin_type: "".to_string(),
         }
     }
+
+    pub fn error_execution() -> Event {
+        Event {
+            name: "error.execution".to_string(),
+            etype: EventType::platform,
+            sendid: "".to_string(),
+            origin: "".to_string(),
+            data: None,
+            invoke_id: 0,
+            origin_type: "".to_string(),
+        }
+    }
+
 
     pub fn get_copy(&self) -> Box<Event> {
         Box::new(Event {
@@ -943,6 +953,8 @@ impl Fsm {
             if self.binding == BindingType::Early {
                 datamodel.initializeDataModel(self, self.pseudo_root);
             }
+
+            datamodel.implement_mandatory_functionality(self);
         }
         self.executeGlobalScriptElement(datamodel);
 
@@ -1090,7 +1102,7 @@ impl Fsm {
                             };
                         self.tracer.exit_method("internalQueue.dequeue");
                         self.tracer.event_internal_received(&internalEvent);
-                        datamodel.set(&"_event".to_string(), internalEvent.get_copy());
+                        datamodel.set_event(&internalEvent);
                         enabledTransitions = self.selectTransitions(datamodel, &internalEvent);
                     }
                 }
@@ -1137,7 +1149,7 @@ impl Fsm {
             let mut toForward: Vec<InvokeId> = Vec::new();
             {
                 let invokeId = externalEvent.invoke_id;
-                datamodel.set(&"_event".to_string(), externalEvent.get_copy());
+                datamodel.set_event(&externalEvent);
                 for sid in datamodel.global().configuration.iterator() {
                     let state = self.get_state_by_id(*sid);
                     for inv in state.invoke.iterator() {
@@ -2210,7 +2222,7 @@ impl Fsm {
         // We currently don't check if id and idLocation are exclusive set.
         if !inv.external_id_location.is_empty() {
             // If "idlocation" is specified, we have to store the generated id to this location
-            datamodel.set(inv.external_id_location.as_str(), Box::new(StringData::new_moved(id)));
+            datamodel.set(inv.external_id_location.as_str(), Box::new(Data::new_moved(id)));
         }
         todo!()
     }
@@ -2298,64 +2310,14 @@ impl Fsm {
     }
 
     pub fn schedule<F>(&self, delay_ms: i64, mut cb: F)
-        where F: 'static + FnMut() + Send {
+    where
+        F: 'static + FnMut() + Send,
+    {
         if delay_ms > 0 {
             self.timer.schedule_with_delay(chrono::Duration::milliseconds(delay_ms), cb).ignore();
         } else {
             cb();
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct SrcData {
-    pub src: String,
-    pub content: Option<String>,
-}
-
-impl SrcData {
-    pub fn new() -> SrcData {
-        SrcData { src: "".to_string(), content: None }
-    }
-}
-
-impl ToString for SrcData {
-    fn to_string(&self) -> String {
-        self.src.clone()
-    }
-}
-
-impl Data for SrcData {
-    fn get_copy(&self) -> Box<dyn Data> {
-        Box::new(SrcData {
-            src: self.src.clone(),
-            content: self.content.clone(),
-        })
-    }
-}
-
-#[derive(Debug)]
-pub struct ExpressionData {
-    pub expr: String,
-}
-
-impl ExpressionData {
-    pub fn new() -> ExpressionData {
-        ExpressionData { expr: "".to_string() }
-    }
-}
-
-impl ToString for ExpressionData {
-    fn to_string(&self) -> String {
-        self.expr.clone()
-    }
-}
-
-impl Data for ExpressionData {
-    fn get_copy(&self) -> Box<dyn Data> {
-        Box::new(ExpressionData {
-            expr: self.expr.clone(),
-        })
     }
 }
 

@@ -1,17 +1,17 @@
 extern crate core;
 
+use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Sender;
 use std::thread::JoinHandle;
 
 use log::info;
 
-use crate::{fsm, reader};
-
+use crate::{ArgOption, fsm, reader};
 #[cfg(feature = "BasicHttpEventIOProcessor")]
 use crate::basic_http_event_io_processor::BasicHTTPEventIOProcessor;
-
 use crate::event_io_processor::EventIOProcessor;
 use crate::fsm::Event;
 use crate::scxml_event_io_processor::ScxmlEventIOProcessor;
@@ -35,6 +35,26 @@ impl ExecuterState {
 /// This class maintains IO Processors used by the FSMs.
 pub struct FsmExecutor {
     pub state: Arc<Mutex<ExecuterState>>,
+    pub include_paths: Vec<PathBuf>,
+}
+
+pub static INCLUDE_PATH_ARGUMENT_OPTION: ArgOption = ArgOption {
+    name: "includePaths",
+    with_value: true,
+    required: false,
+};
+
+pub fn include_path_from_arguments(named_arguments: &HashMap::<&'static str, String>) -> Vec<PathBuf> {
+    let mut include_paths = Vec::new();
+    match named_arguments.get(INCLUDE_PATH_ARGUMENT_OPTION.name) {
+        None => {}
+        Some(path) => {
+            for pa in path.split(std::path::MAIN_SEPARATOR).filter(|&p| !p.is_empty()) {
+                include_paths.push(Path::new(pa).to_owned());
+            }
+        }
+    }
+    include_paths
 }
 
 impl FsmExecutor {
@@ -42,18 +62,29 @@ impl FsmExecutor {
         self.state.lock().unwrap().processors.push(processor);
     }
 
-    pub fn new() -> FsmExecutor {
+    pub async fn new() -> FsmExecutor {
         let mut e = FsmExecutor {
             state: Arc::new(Mutex::new(ExecuterState::new())),
+            include_paths: Vec::new(),
         };
         #[cfg(feature = "BasicHttpEventIOProcessor")]
         {
             let w = Box::new(BasicHTTPEventIOProcessor::new(
-                IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), "localhost", 5555));
+                IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), "localhost", 5555).await);
             e.add_processor(w);
         }
         e.add_processor(Box::new(ScxmlEventIOProcessor::new()));
         e
+    }
+
+    pub fn set_include_paths_from_arguments(&mut self, named_arguments: &HashMap::<&'static str, String>) {
+        self.set_include_paths(&include_path_from_arguments(named_arguments));
+    }
+
+    pub fn set_include_paths(&mut self, include_path: &Vec<PathBuf>) {
+        for p in include_path {
+            self.include_paths.push(p.clone());
+        }
     }
 
     /// Shutdown of all FSMs and IO-Processors.
@@ -75,7 +106,7 @@ impl FsmExecutor {
         info!("Loading FSM from {}", file_path);
 
         // Use reader to parse the scxml file:
-        let sm = reader::read_from_xml_file(file_path.to_string());
+        let sm = reader::read_from_xml_file(file_path.to_string(), &self.include_paths);
         match sm {
             Ok(mut fsm) => {
                 fsm.tracer.enable_trace(trace);

@@ -65,6 +65,7 @@ fi
 
 mkdir -p txml
 mkdir -p scxml
+mkdir -p dependencies/scxml
 
 if [ ! -f txml/$XSL_FILE ]; then
   echo $TEST_SOURCE_URL$XSL_FILE
@@ -94,5 +95,28 @@ for TEST_URI in $(xmllint --xpath "//assert/test[@conformance='mandatory' and @m
     java -jar saxon/$SAXON_JAR -o:scxml/$TEST_FILE.scxml -xsl:txml/$XSL_FILE -s:txml/$TEST_FILE
   fi
 done
+
+# Get all dependencies
+for DEP_URI in $(xmllint --xpath "//assert/test[@conformance='mandatory' and @manual='false']/dep/@uri"  txml/manifest.xml | cut '-d"' -f2); do
+  DEP_FILE=$(cut '-d/' -f2 <<< "$DEP_URI")
+  if [ ! -f "dependencies/$DEP_FILE" ]; then
+    if [ -f "dependencies/scxml/$DEP_FILE.scxml" ]; then
+      # Remove transformed version to force update
+      rm "dependencies/scxml/$DEP_FILE.scxml"
+    fi
+    echo Fetching $TEST_SOURCE_URL$DEP_URI
+    curl -o "dependencies/$DEP_FILE" "$TEST_SOURCE_URL$DEP_URI"
+  fi
+
+  if [[ $DEP_FILE == *.scxml ]]; then
+    if [ ! -f "dependencies/scxml/$DEP_FILE.scxml" ]; then
+      echo xsl processing $DEP_FILE
+      java -jar saxon/$SAXON_JAR "-o:dependencies/scxml/$DEP_FILE.scxml" -xsl:txml/$XSL_FILE "-s:dependencies/$DEP_FILE"
+    fi
+  else
+    cp "dependencies/$DEP_FILE" "dependencies/scxml/$DEP_FILE"
+  fi
+done
+
 
 echo DONE

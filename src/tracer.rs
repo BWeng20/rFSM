@@ -21,12 +21,10 @@ pub enum TraceMode {
     ALL,
 }
 
-impl TraceMode {
-    /// Gets argument-option for Trace-Mode.
-    pub fn argument_option() -> ArgOption {
-        ArgOption::new("trace").with_value()
-    }
+pub static TRACE_ARGUMENT_OPTION: ArgOption =
+    ArgOption { name: "trace", with_value: true, required: false };
 
+impl TraceMode {
     /// Parse Trace-mode from program arguments.
     pub fn from_arguments(named_arguments: &HashMap::<&'static str, String>) -> TraceMode {
         let mut trace = TraceMode::STATES;
@@ -117,7 +115,7 @@ pub trait Tracer: Send + Debug {
     /// Called by FSM if an internal event is received
     fn event_internal_received(&self, what: &Event) {
         if self.is_trace(TraceMode::EVENTS) {
-            self.trace(format!("Int-> {} #{}", what.name, what.invoke_id).as_str());
+            self.trace(format!("Internal Event-> {}, invokeId {}", what.name, what.invoke_id).as_str());
         }
     }
 

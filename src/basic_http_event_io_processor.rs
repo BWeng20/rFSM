@@ -1,7 +1,9 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::convert::Infallible;
 use std::fmt::Debug;
-use std::net::{IpAddr, SocketAddr, TcpStream};
+use std::net::{IpAddr, TcpStream};
+use std::net::SocketAddr;
 use std::ops::Deref;
 use std::sync::{Arc, atomic::AtomicBool, Mutex};
 use std::sync::atomic::Ordering;
@@ -9,10 +11,14 @@ use std::sync::mpsc;
 use std::sync::mpsc::channel;
 use std::thread;
 
-use hyper;
-use hyper::body::HttpBody;
-use hyper::service::{make_service_fn, service_fn};
+use http_body_util::{BodyExt, Full};
+use hyper::{Request, Response};
+use hyper::body::Bytes;
+use hyper::server::conn::http1;
+use hyper::service::service_fn;
+use hyper_util::rt::TokioIo;
 use log::{debug, error, info};
+use tokio::net::TcpListener;
 
 use crate::datamodel::BASIC_HTTP_EVENT_PROCESSOR;
 use crate::event_io_processor::{EventIOProcessor, EventIOProcessorHandle};
@@ -55,8 +61,8 @@ enum BasicHTTPEvent {
 
 impl BasicHTTPEvent {
     /// Parse a Http request and created  the resulting message to the message thread.
-    pub async fn from_request(request: hyper::Request<hyper::Body>) -> Result<BasicHTTPEvent, hyper::StatusCode> {
-        let (parts, mut body) = request.into_parts();
+    pub async fn from_request(request: hyper::Request<hyper::body::Incoming>) -> Result<BasicHTTPEvent, hyper::StatusCode> {
+        let (parts, body) = request.into_parts();
         debug!("Method {:?}", parts.method);
         debug!("Header {:?}", parts.headers );
         debug!("Uri {:?}", parts.uri );
@@ -79,12 +85,12 @@ impl BasicHTTPEvent {
         match parts.method {
             hyper::Method::POST => {
                 // Mandatory POST implementation
-                match body.data().await {
-                    Some(data) => {
-                        db = data.unwrap();
+                match body.collect().await {
+                    Ok(data) => {
+                        db = data.to_bytes();
                         query_params = form_urlencoded::parse(db.as_ref()).collect();
                     }
-                    None => {
+                    Err(_e) => {
                         return Err(hyper::StatusCode::BAD_REQUEST);
                     }
                 }
@@ -127,9 +133,7 @@ impl BasicHTTPEvent {
     }
 }
 
-/// Process a request and sends the resulting event via Sender.
-/// The result is always Ok
-async fn handle_request(req: hyper::Request<hyper::Body>, tx: mpsc::Sender<Box<BasicHTTPEvent>>) -> Result<hyper::Response<hyper::Body>, hyper::Error> {
+async fn handle_request(req: Request<hyper::body::Incoming>, tx: mpsc::Sender<Box<BasicHTTPEvent>>) -> Result<Response<Bytes>, Infallible> {
     debug!("Serve {:?}", req );
 
     let rs =
@@ -142,22 +146,26 @@ async fn handle_request(req: hyper::Request<hyper::Body>, tx: mpsc::Sender<Box<B
             match sr {
                 Ok(_) => {
                     debug!("SendOk");
-                    Ok(hyper::Response::builder().status(hyper::StatusCode::OK).body(hyper::Body::from("Ok")).unwrap())
+                    Ok(hyper::Response::builder().status(hyper::StatusCode::OK).body(Bytes::from("Ok")).unwrap())
                 }
                 Err(error) => {
                     debug!("SendError {:?}", error);
-                    Ok(hyper::Response::builder().status(hyper::StatusCode::INTERNAL_SERVER_ERROR).body(hyper::Body::from(error.to_string())).unwrap())
+                    Ok(hyper::Response::builder().status(hyper::StatusCode::INTERNAL_SERVER_ERROR).body(Bytes::from(error.to_string())).unwrap())
                 }
             }
         }
         Err(status) => {
-            Ok(hyper::Response::builder().status(status.clone()).body(hyper::Body::from("Error".to_string())).unwrap())
+            Ok(hyper::Response::builder().status(status.clone()).body(Bytes::from("Error".to_string())).unwrap())
         }
     };
 }
 
+async fn hello(_: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
+    Ok(Response::new(Full::new(Bytes::from("Hello, World!"))))
+}
+
 impl BasicHTTPEventIOProcessor {
-    pub fn new(ip_addr: IpAddr, location_name: &str, port: u16) -> BasicHTTPEventIOProcessor {
+    pub async fn new(ip_addr: IpAddr, location_name: &str, port: u16) -> BasicHTTPEventIOProcessor {
         let terminate_flag = Arc::new(AtomicBool::new(false));
 
         let addr = SocketAddr::new(ip_addr, port);
@@ -165,9 +173,9 @@ impl BasicHTTPEventIOProcessor {
         info!("HTTP server starting");
 
         let inner_terminate_flag = terminate_flag.clone();
-        let (sender, receiver_server) = channel::<Box<BasicHTTPEvent>>();
+        let (_sender, receiver_server) = channel::<Box<BasicHTTPEvent>>();
 
-        let _thread_server =
+        let _thread_message_server =
             thread::spawn(move || {
                 let mut c = 0;
                 debug!("Message server started");
@@ -197,15 +205,35 @@ impl BasicHTTPEventIOProcessor {
             });
 
 
-        let make_svc = make_service_fn(move |_| {
-            let tx = sender.clone();
-            async move {
-                Ok::<_, hyper::Error>(service_fn(move |req| handle_request(req, tx.clone())))
-            }
-        });
+        let listener_result = TcpListener::bind(addr).await;
 
-        let server = hyper::Server::bind(&addr).serve(make_svc);
-        let _thread_server = tokio::spawn(server);
+        let server = listener_result.unwrap();
+
+        let _thread_server =
+            tokio::task::spawn(async move {
+                loop {
+                    let (stream, _addr) = server.accept().await.unwrap();
+                    let io = TokioIo::new(stream);
+
+
+                    tokio::task::spawn(async move {
+                        /*
+                        let mut serv = service_fn(
+                            move |request| {
+                                let tx = sender.clone();
+                                handle_request(request, tx)
+                            }
+                        );
+*/
+                        // Finally, we bind the incoming connection to our `hello` service
+                        if let Err(err) = http1::Builder::new().serve_connection(io, service_fn(hello))
+                            .await
+                        {
+                            eprintln!("Error serving connection: {:?}", err);
+                        }
+                    });
+                }
+            });
 
         debug!("BasicHTTPServer at {:?}", addr );
 

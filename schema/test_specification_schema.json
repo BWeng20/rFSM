@@ -7,7 +7,10 @@
   "properties": {
     "file": {
       "description": "The relative path to the SCXML file or the FSM to test.\\nCan be null, in this case the test-runner needs additional a scxml-file.",
-      "type": ["string", "null"]
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "events": {
       "description": "The sequence of events to test.",
@@ -19,23 +22,23 @@
             "description": "The event name.",
             "type": "string"
           },
-          "delay_ms" :
-          {
+          "delay_ms": {
             "description": "Delay in milliseconds after the event was send.",
             "type": "integer"
           },
-          "shall_reach_state" :
-          {
+          "shall_reach_state": {
             "description": " Optional state to reach after the event.\\nUse #stop to check for termination of FSM.",
             "type": "string"
           },
-          "shall_send_event" :
-          {
+          "shall_send_event": {
             "description": "Optional event to receive from FSM after the event.",
             "type": "string"
           }
         },
-        "required": [ "name", "delay_ms" ]
+        "required": [
+          "name",
+          "delay_ms"
+        ]
       }
     },
     "final_configuration": {
@@ -50,5 +53,8 @@
       "type": "integer"
     }
   },
-  "required": [ "file", "events" ]
+  "required": [
+    "file",
+    "events"
+  ]
 }

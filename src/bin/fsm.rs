@@ -7,9 +7,9 @@ use std::{io, process, thread, time};
 use std::io::{stdout, Write};
 
 use rfsm::fsm::{Event, EventType};
-use rfsm::fsm_executor::FsmExecutor;
+use rfsm::fsm_executor::{FsmExecutor, INCLUDE_PATH_ARGUMENT_OPTION};
 use rfsm::handle_trace;
-use rfsm::tracer::TraceMode;
+use rfsm::tracer::{TRACE_ARGUMENT_OPTION, TraceMode};
 
 /// Loads the specified FSM and prompts for Events.
 #[tokio::main(flavor = "multi_thread")]
@@ -18,7 +18,8 @@ async fn main() {
     env_logger::init();
 
     let (named_opt, final_args) = rfsm::get_arguments(&[
-        TraceMode::argument_option()
+        &TRACE_ARGUMENT_OPTION,
+        &INCLUDE_PATH_ARGUMENT_OPTION,
     ]);
 
     let trace = TraceMode::from_arguments(&named_opt);
@@ -28,7 +29,8 @@ async fn main() {
         process::exit(1);
     }
 
-    let mut executor = FsmExecutor::new();
+    let mut executor = FsmExecutor::new().await;
+    executor.set_include_paths_from_arguments(&named_opt);
 
     let (thread_handle, mut sender) = executor.execute(final_args[0].as_str(), trace).unwrap();
 

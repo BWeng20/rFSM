@@ -14,9 +14,9 @@ use quick_xml::events::{BytesStart, Event};
 use quick_xml::events::attributes::Attributes;
 use quick_xml::Reader;
 
-use crate::datamodel::StringData;
+use crate::datamodel::Data;
 use crate::executable_content::{Assign, Cancel, ExecutableContent, Expression, ForEach, get_opt_executable_content_as, get_safe_executable_content_as, If, Log, parse_duration_to_milliseconds, Raise, SendParameters, TARGET_SCXML_EVENT_PROCESSOR};
-use crate::fsm::{BindingType, DoneData, ExecutableContentId, ExpressionData, Fsm, HistoryType, ID_COUNTER, Invoke, map_history_type, map_transition_type, SrcData, State, StateId, Transition, TransitionId, TransitionType};
+use crate::fsm::{BindingType, DoneData, ExecutableContentId, Fsm, HistoryType, ID_COUNTER, Invoke, map_history_type, map_transition_type, State, StateId, Transition, TransitionId, TransitionType};
 use crate::fsm::vec_to_string;
 
 pub type AttributeMap = HashMap<String, String>;
@@ -222,6 +222,7 @@ struct ReaderState {
     stack: Vec<ReaderStackItem>,
     executable_content_stack: Vec<(ExecutableContentId, &'static str)>,
     current_executable_content: ExecutableContentId,
+    include_paths: Vec::<PathBuf>,
 }
 
 
@@ -241,6 +242,7 @@ impl ReaderState {
             fsm: Box::new(Fsm::new()),
             file: "Buffer".to_string(),
             content: "".to_string(),
+            include_paths: Vec::new(),
         }
     }
 
@@ -684,14 +686,23 @@ impl ReaderState {
             // If the 'src' attribute is present, the Platform must fetch the specified object
             // at the time specified by the 'binding' attribute of \<scxml\> and must assign it as
             // the value of the data element
-            self.get_current_state().data.set(id, Box::new(SrcData { src: src.unwrap().clone(), content: None }));
+
+            match self.read_from_uri(src.unwrap()) {
+                Ok(source) => {
+                    debug!("src='{}':\n{}", src.unwrap(), source );
+                    self.get_current_state().data.set(id, Box::new(Data::new_moved(source)));
+                }
+                Err(e) => {
+                    panic!("Can't read data source '{}'. {}", src.unwrap(), e);
+                }
+            }
         } else if expr.is_some() {
             if !content.is_empty() {
                 panic!("{} shall have only {}, {} or children, but not some combination of it.", TAG_DATA, ATTR_SRC, ATTR_EXPR);
             }
-            self.get_current_state().data.set(id, Box::new(ExpressionData { expr: expr.unwrap().clone() }));
+            self.get_current_state().data.set(id, Box::new(Data::new(expr.unwrap())));
         } else if !content.is_empty() {
-            self.get_current_state().data.set(id, Box::new(StringData::new(content.to_string().as_str())));
+            self.get_current_state().data.set(id, Box::new(Data::new_moved(content)));
         }
     }
 
@@ -1487,8 +1498,9 @@ fn decode_attributes(reader: &XReader, attr: &mut Attributes) -> AttributeMap {
 }
 
 /// Reads the FSM from a XML file
-pub fn read_from_xml_file(file: String) -> Result<Box<Fsm>, String> {
+pub fn read_from_xml_file(file: String, include_paths: &Vec::<PathBuf>) -> Result<Box<Fsm>, String> {
     let mut rs = ReaderState::new();
+    rs.include_paths = include_paths.clone();
     let r = rs.process_file(file);
     match r {
         Ok(_m) => {

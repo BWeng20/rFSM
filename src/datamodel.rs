@@ -7,7 +7,8 @@ use std::fmt::{Debug, Formatter};
 use log::info;
 
 use crate::event_io_processor::EventIOProcessor;
-use crate::fsm::{ExecutableContentId, Fsm, GlobalData, StateId};
+use crate::fsm;
+use crate::fsm::{Event, ExecutableContentId, Fsm, GlobalData, StateId};
 
 pub const NULL_DATAMODEL: &str = "NULL";
 pub const NULL_DATAMODEL_LC: &str = "null";
@@ -38,24 +39,30 @@ pub trait Datamodel {
     /// Get the name of the data model as defined by the \<scxml\> attribute "datamodel".
     fn get_name(self: &Self) -> &str;
 
+    /// Adds the "In" function.
+    fn implement_mandatory_functionality(&mut self, fsm: &mut Fsm);
+
     /// Initialize the data model for one data-store.
     /// This method is called for the global data and for the data of each state.
     #[allow(non_snake_case)]
     fn initializeDataModel(&mut self, fsm: &mut Fsm, state: StateId);
 
     /// Sets a global variable.
-    fn set(&mut self, name: &str, data: Box<dyn Data>);
+    fn set(&mut self, name: &str, data: Box<Data>);
+
+    // Sets system variable "_event"
+    fn set_event(&mut self, event: &fsm::Event);
 
     /// Execute an assign expression.
     fn assign(&mut self, fsm: &Fsm, left_expr: &str, right_expr: &str);
 
     /// Gets a global variable.
-    fn get(&self, name: &str) -> Option<&dyn Data>;
+    fn get(&self, name: &str) -> Option<&Data>;
 
     /// Get _ioprocessors.
     fn get_io_processors(&mut self) -> &mut HashMap<String, Box<dyn EventIOProcessor>>;
 
-    fn get_mut<'v>(&'v mut self, name: &str) -> Option<&'v mut dyn Data>;
+    fn get_mut<'v>(&'v mut self, name: &str) -> Option<&'v mut Data>;
 
     /// Clear all.
     fn clear(&mut self);
@@ -81,6 +88,10 @@ pub trait Datamodel {
 
     #[allow(non_snake_case)]
     fn executeContent(&mut self, fsm: &Fsm, contentId: ExecutableContentId);
+
+    fn internal_error_execution(&mut self) {
+        self.global().internalQueue.enqueue(Event::error_execution());
+    }
 }
 
 /// ## W3C says:
@@ -138,10 +149,20 @@ impl Datamodel for NullDatamodel {
         return NULL_DATAMODEL;
     }
 
-    #[allow(non_snake_case)]
-    fn initializeDataModel(self: &mut Self, _fsm: &mut Fsm, _dataState: StateId) {}
+    fn implement_mandatory_functionality(self: &mut Self, _fsm: &mut Fsm) {
+        // TODO
+    }
 
-    fn set(self: &mut NullDatamodel, _name: &str, _data: Box<dyn Data>) {
+    fn set_event(&mut self, _event: &crate::fsm::Event) {
+        // nothing to do
+    }
+
+    #[allow(non_snake_case)]
+    fn initializeDataModel(self: &mut Self, _fsm: &mut Fsm, _dataState: StateId) {
+        // nothing to do
+    }
+
+    fn set(self: &mut NullDatamodel, _name: &str, _data: Box<Data>) {
         // nothing to do
     }
 
@@ -149,7 +170,7 @@ impl Datamodel for NullDatamodel {
         // nothing to do
     }
 
-    fn get(self: &NullDatamodel, _name: &str) -> Option<&dyn Data> {
+    fn get(self: &NullDatamodel, _name: &str) -> Option<&Data> {
         None
     }
 
@@ -157,7 +178,7 @@ impl Datamodel for NullDatamodel {
         return &mut self.io_processors;
     }
 
-    fn get_mut<'v>(&'v mut self, _name: &str) -> Option<&'v mut dyn Data> {
+    fn get_mut<'v>(&'v mut self, _name: &str) -> Option<&'v mut Data> {
         None
     }
 
@@ -201,153 +222,53 @@ impl<T: Debug + 'static> ToAny for T {
     }
 }
 
-pub trait Data: ToAny + Send + Debug + ToString {
-    fn get_copy(&self) -> Box<dyn Data>;
-    fn is_numeric(&self) -> bool {
-        false
-    }
-    fn as_number(&self) -> f64 {
-        0.0
-    }
+pub struct Data {
+    pub value: Option<String>,
 }
 
-pub fn get_data_as<T: 'static>(ec: &mut dyn Data) -> Option<&mut T> {
-    let va = ec.as_any();
-    match va.downcast_mut::<T>() {
-        Some(v) => {
-            Some(v)
+impl Data {
+    pub fn new(val: &str) -> Data {
+        Data {
+            value: Some(val.to_string()),
         }
-        None => {
-            None
+    }
+    pub fn new_moved(val: String) -> Data {
+        Data {
+            value: Some(val),
         }
     }
 }
 
-pub struct StringData {
-    pub value: String,
-}
-
-impl StringData {
-    pub fn new(val: &str) -> StringData {
-        StringData {
-            value: val.to_string(),
-        }
-    }
-    pub fn new_moved(val: String) -> StringData {
-        StringData {
-            value: val,
-        }
-    }
-}
-
-impl Debug for StringData {
+impl Debug for Data {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.value)
+        write!(f, "{}",
+               match &self.value {
+                   Some(v) => {
+                       v.as_str()
+                   }
+                   None => {
+                       "null"
+                   }
+               })
     }
 }
 
-impl ToString for StringData {
+impl ToString for Data {
     fn to_string(&self) -> String {
-        self.value.clone()
-    }
-}
-
-impl Data for StringData {
-    fn get_copy(&self) -> Box<dyn Data> {
-        Box::new(StringData {
-            value: self.value.clone(),
-        })
-    }
-}
-
-pub struct BooleanData {
-    pub value: bool,
-}
-
-impl BooleanData {
-    pub fn new(val: bool) -> BooleanData {
-        BooleanData {
-            value: val,
+        match &self.value {
+            Some(v) => {
+                v.clone()
+            }
+            None => {
+                "null".to_string()
+            }
         }
-    }
-}
-
-impl Debug for BooleanData {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.value)
-    }
-}
-
-impl ToString for BooleanData {
-    fn to_string(&self) -> String {
-        (if self.value { "true" } else { "false" }).to_string()
-    }
-}
-
-impl Data for BooleanData {
-    fn get_copy(&self) -> Box<dyn Data> {
-        Box::new(BooleanData { value: self.value })
-    }
-}
-
-#[derive(Debug)]
-pub struct FloatData {
-    pub value: f64,
-}
-
-impl FloatData {
-    pub fn new(val: f64) -> FloatData {
-        FloatData {
-            value: val
-        }
-    }
-}
-
-impl ToString for FloatData {
-    fn to_string(&self) -> String {
-        self.value.to_string()
-    }
-}
-
-impl Data for FloatData {
-    fn get_copy(&self) -> Box<dyn Data> {
-        Box::new(FloatData { value: self.value })
-    }
-
-    fn is_numeric(&self) -> bool {
-        true
-    }
-
-    fn as_number(&self) -> f64 {
-        self.value
-    }
-}
-
-
-#[derive(Debug)]
-pub struct EmptyData {}
-
-impl EmptyData {
-    pub fn new() -> EmptyData {
-        EmptyData {}
-    }
-}
-
-impl ToString for EmptyData {
-    fn to_string(&self) -> String {
-        "".to_string()
-    }
-}
-
-impl Data for EmptyData {
-    fn get_copy(&self) -> Box<dyn Data> {
-        Box::new(EmptyData {})
     }
 }
 
 #[derive(Debug)]
 pub struct DataStore {
-    pub values: HashMap<String, Box<dyn Data>>,
+    pub values: HashMap<String, Box<Data>>,
 
 }
 
@@ -358,7 +279,7 @@ impl DataStore {
         }
     }
 
-    pub fn get(&self, key: &str) -> Option<&Box<dyn Data>> {
+    pub fn get(&self, key: &str) -> Option<&Box<Data>> {
         if self.values.contains_key(key) {
             self.values.get(key)
         } else {
@@ -366,7 +287,7 @@ impl DataStore {
         }
     }
 
-    pub fn get_mut<'v>(&'v mut self, key: &str) -> Option<&'v mut Box<dyn Data>> {
+    pub fn get_mut<'v>(&'v mut self, key: &str) -> Option<&'v mut Box<Data>> {
         if self.values.contains_key(key) {
             self.values.get_mut(key)
         } else {
@@ -374,7 +295,7 @@ impl DataStore {
         }
     }
 
-    pub fn set(&mut self, key: &str, data: Box<dyn Data>) {
+    pub fn set(&mut self, key: &str, data: Box<Data>) {
         self.values.insert(key.to_string(), data);
     }
 }

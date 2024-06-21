@@ -5,11 +5,11 @@ SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 cd $SCRIPT_DIR
 echo "Working in $(pwd)"
 
-RFSM_BIN=../../target/release/test
+RFSM_BIN=../../target/debug/test
 
 echo "======================================================="
 
-export RUST_LOG=warn
+export RUST_LOG=debug
 export RUST_BACKTRACE=full
 
 OK_COUNT=0
@@ -41,7 +41,7 @@ for TEST_FILE in scxml/*.scxml; do
   echo -n "Testing ${TABLE_TEST_NAME} "
   echo -n "| ${TABLE_TEST_NAME}| " >> $REPORT_FILE
 
-  $RFSM_BIN -trace states test_config.json "$TEST_FILE" 1>"logs/$TEST_NAME.log" 2>&1
+  $RFSM_BIN -includePaths dependencies/scxml -trace all test_config.json "$TEST_FILE" 1>"logs/$TEST_NAME.log" 2>&1
   if [ $? -eq 0 ]; then
       OK_COUNT=$(( OK_COUNT + 1 ))
       echo -e "\033[0;32mOK\033[0m"

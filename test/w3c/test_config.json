@@ -1,5 +1,8 @@
-{ "file": null,
-  "final_configuration": [ "pass" ],
+{
+  "file": null,
+  "final_configuration": [
+    "pass"
+  ],
   "events": [],
   "timeout_milliseconds": 3000
 }

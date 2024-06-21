@@ -33,7 +33,7 @@ The resulting model is then moved to a worker thread where the FSM waits for eve
 
 Multiple FSM can work in parallel and communicate via their external event-queues (using channels).
 
-A Datamodel-instance is associated with each FSM. 
+A Datamodel-instance is associated with each FSM.
 
 ### Overview
 
@@ -46,7 +46,6 @@ A Datamodel-instance is associated with each FSM.
 | BasicHttpEventIOProcessor | Adds an implementation of BasicHttpEventIOProcessor  | hyper, http-body-util, hyper-util, tokio, form_urlencoded |
 | json-config               | The test tool can read configurations in JSON.       | serde_json                                                |
 | yaml-config               | The test tool can read configurations in YAML.       | yaml-rust                                                 |
-
 
 ## Structure
 
@@ -253,11 +252,10 @@ The project use crate "log". If the feature "EnvLog" is active, the crate "env_l
 
 The module reader prints the SAX-events to "log::debug".\
 FSM methods, state transitions and output are traces via a trait "fsm::Tracer" with a default implementation that prints to "info".\
-The Tracer can be replaced by the using client by some other implementation, or it can be configured to print only specific information. 
+The Tracer can be replaced by the using client by some other implementation, or it can be configured to print only specific information.
 The Tracer has different flags to control what is traced, see Enum [TraceMode](src/tracer.rs) for details.
 
 The used log level of crate "log" can be controlled by environment variable "RUST_LOG", e.g. "RUST_LOG=debug".
-
 
 ### Manual Tests
 
