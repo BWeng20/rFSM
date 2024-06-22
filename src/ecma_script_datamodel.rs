@@ -326,19 +326,18 @@ impl Datamodel for ECMAScriptDatamodel {
 
 #[cfg(test)]
 mod tests {
-    use std::{time};
     use crate::reader;
     use crate::test::run_test_manual;
     use crate::tracer::TraceMode;
 
     #[test]
-    fn In_function() {
+    fn in_function() {
         println!("Creating The SM:");
         let sm = reader::read_from_xml(
             r##"<scxml initial='Main' datamodel='ecmascript'>
               <state id='Main'>
                 <onentry>
-                   <if cond='In(\'Main\')'>
+                   <if cond='In("Main")'>
                       <raise event='MainIsIn'/>
                    </if>
                 </onentry>
