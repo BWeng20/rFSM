@@ -115,6 +115,7 @@ pub trait Datamodel {
     fn executeContent(&mut self, fsm: &Fsm, contentId: ExecutableContentId);
 
     fn internal_error_execution(&mut self) {
+        info!("enqueue error:execution");
         get_global!(self).internalQueue.enqueue(Event::error_execution());
     }
 }
