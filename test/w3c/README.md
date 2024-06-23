@@ -38,8 +38,8 @@ The script will execute all _*.scxml_ files in folder _scxml_.
 It will print the progress to the console.
 Output of the tests is redirected to files in sub-folder "logs".
 
-The script needs a release-build of the binary `test` in `target/release`.
-You can build it with `cargo build --release`
+The script needs a debug-build of the binary `test` in `target/debug`.
+You can build it with `cargo build`
 
 The script writes also the Report-file, that is linked below.
 
