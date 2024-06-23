@@ -9,7 +9,7 @@ use rfsm::test::load_json_config;
 #[cfg(feature = "yaml-config")]
 use rfsm::test::load_yaml_config;
 use rfsm::test_tracer::abort_test;
-use rfsm::tracer::{TRACE_ARGUMENT_OPTION, TraceMode, Tracer};
+use rfsm::tracer::{TRACE_ARGUMENT_OPTION, TraceMode};
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {

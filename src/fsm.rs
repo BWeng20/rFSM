@@ -4,6 +4,8 @@
 #![allow(non_camel_case_types)]
 
 use std::{fmt, thread};
+#[cfg(test)]
+use std::{println as debug, println as info, println as error};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::Hash;
@@ -16,7 +18,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::JoinHandle;
 
-use log::{debug, info};
+#[cfg(not(test))]
+use log::{debug, error, info};
 
 use crate::datamodel::{Data, Datamodel, DataStore, NULL_DATAMODEL, NULL_DATAMODEL_LC, NullDatamodel};
 #[cfg(feature = "ECMAScript")]
@@ -24,6 +27,7 @@ use crate::ecma_script_datamodel::{ECMA_SCRIPT_LC, ECMAScriptDatamodel};
 use crate::event_io_processor::EventIOProcessor;
 use crate::executable_content::ExecutableContent;
 use crate::fsm_executor::ExecuterState;
+use crate::get_global;
 use crate::tracer::{DefaultTracer, TraceMode, Tracer};
 
 /// Starts the FSM inside a worker thread.
@@ -45,7 +49,7 @@ pub fn start_fsm(mut sm: Box<Fsm>, executor_state: &Arc<Mutex<ExecuterState>>) -
             {
                 sm.session_id = SESSION_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
                 let mut datamodel = create_datamodel(sm.datamodel.as_str(), &vt);
-                datamodel.global().externalQueue = externalQueue;
+                get_global!(datamodel).externalQueue = externalQueue;
                 sm.interpret(datamodel.deref_mut());
             }
             info!("SM finished");
@@ -917,9 +921,9 @@ impl Fsm {
     /// Initialize the global data structures, including the data model.
     /// If binding is set to 'early', initialize the data model.
     /// Then execute the global \<script\> element, if any.
-    /// Finally call enterStates on the initial configuration, set the global running
+    /// Finally, call enterStates on the initial configuration, set the global running
     /// variable to true and start the interpreter's event loop.
-    /// ```
+    /// ```ignore
     /// procedure interpret(doc):
     ///     if not valid(doc): failWithError()
     ///     expandScxmlSource(doc)
@@ -939,16 +943,17 @@ impl Fsm {
     pub fn interpret(&mut self, datamodel: &mut dyn Datamodel) {
         self.tracer.enter_method("interpret");
         if !self.valid() {
-            self.failWithError()
+            self.failWithError();
+            return;
         }
         self.expandScxmlSource();
         {
             datamodel.clear();
             {
-                let global = datamodel.global();
-                global.internalQueue.clear();
-                global.historyValue.clear();
-                global.running = true;
+                let mut gd = get_global!(datamodel);
+                gd.internalQueue.clear();
+                gd.historyValue.clear();
+                gd.running = true;
             }
             if self.binding == BindingType::Early {
                 datamodel.initializeDataModel(self, self.pseudo_root);
@@ -987,7 +992,7 @@ impl Fsm {
     /// Throws a panic
     #[allow(non_snake_case)]
     fn failWithError(&self) {
-        panic!("FSM has failed");
+        error!("FSM has failed");
     }
 
 
@@ -1030,7 +1035,7 @@ impl Fsm {
     /// event to them. These steps apply before the transitions are taken.
     ///
     /// This event loop thus enforces run-to-completion semantics, in which the system process an external event and then takes all the 'follow-up' transitions that the processing has enabled before looking for another external event. For example, suppose that the external event queue contains events ext1 and ext2 and the machine is in state s1. If processing ext1 takes the machine to s2 and generates internal event int1, and s2 contains a transition t triggered by int1, the system is guaranteed to take t, no matter what transitions s2 or other states have that would be triggered by ext2. Note that this is true even though ext2 was already in the external event queue when int1 was generated. In effect, the algorithm treats the processing of int1 as finishing up the processing of ext1.
-    /// ```
+    /// ```ignore
     /// procedure mainEventLoop():
     ///     while running:
     ///         enabledTransitions = null
@@ -1083,22 +1088,23 @@ impl Fsm {
     #[allow(non_snake_case)]
     fn mainEventLoop(&mut self, datamodel: &mut dyn Datamodel) {
         self.tracer.enter_method("mainEventLoop");
-        while datamodel.global().running {
+
+        while get_global!(datamodel).running {
             let mut enabledTransitions;
             let mut macrostepDone = false;
             // Here we handle eventless transitions and transitions
             // triggered by internal events until macrostep is complete
-            while datamodel.global().running && !macrostepDone {
+            while get_global!(datamodel).running && !macrostepDone {
                 enabledTransitions = self.selectEventlessTransitions(datamodel);
                 if enabledTransitions.isEmpty() {
-                    if datamodel.global().internalQueue.isEmpty() {
+                    if get_global!(datamodel).internalQueue.isEmpty() {
                         macrostepDone = true;
                     } else {
                         self.tracer.enter_method("internalQueue.dequeue");
 
                         let internalEvent =
                             {
-                                datamodel.global().internalQueue.dequeue()
+                                get_global!(datamodel).internalQueue.dequeue()
                             };
                         self.tracer.exit_method("internalQueue.dequeue");
                         self.tracer.event_internal_received(&internalEvent);
@@ -1111,13 +1117,13 @@ impl Fsm {
                 }
             }
             // either we're in a final state, and we break out of the loop
-            if !datamodel.global().running {
+            if !get_global!(datamodel).running {
                 break;
             }
             // or we've completed a macrostep, so we start a new macrostep by waiting for an external event
             // Here we invoke whatever needs to be invoked. The implementation of 'invoke' is platform-specific
-            for sid in datamodel.global().statesToInvoke.sort(
-                &|s1, s2| { self.state_entry_order(s1, s2) }).iterator()
+            let sortedStatesToInvoke = get_global!(datamodel).statesToInvoke.sort(&|s1, s2| { self.state_entry_order(s1, s2) });
+            for sid in sortedStatesToInvoke.iterator()
             {
                 let state = self.get_state_by_id(*sid);
                 for inv in state.invoke.sort(&|i1, i2| { Fsm::invoke_document_order(i1, i2) }).iterator() {
@@ -1127,21 +1133,21 @@ impl Fsm {
 
             let externalEvent;
             {
-                let gdb = datamodel.global();
-                gdb.statesToInvoke.clear();
+                // let gdb = datamodel.global();
+                get_global!(datamodel).statesToInvoke.clear();
                 // Invoking may have raised internal error events and we iterate to handle them
-                if !gdb.internalQueue.isEmpty() {
+                if !get_global!(datamodel).internalQueue.isEmpty() {
                     continue;
                 }
                 // A blocking wait for an external event.  Alternatively, if we have been invoked
                 // our parent session also might cancel us.  The mechanism for this is platform specific,
                 // but here we assume it’s a special event we receive
                 self.tracer.enter_method("externalQueue.dequeue");
-                externalEvent = gdb.externalQueue.dequeue();
+                externalEvent = get_global!(datamodel).externalQueue.dequeue();
                 self.tracer.exit_method("externalQueue.dequeue");
                 self.tracer.event_external_received(&externalEvent);
                 if self.isCancelEvent(&externalEvent) {
-                    gdb.running = false;
+                    get_global!(datamodel).running = false;
                     continue;
                 }
             }
@@ -1150,7 +1156,7 @@ impl Fsm {
             {
                 let invokeId = externalEvent.invoke_id;
                 datamodel.set_event(&externalEvent);
-                for sid in datamodel.global().configuration.iterator() {
+                for sid in get_global!(datamodel).configuration.iterator() {
                     let state = self.get_state_by_id(*sid);
                     for inv in state.invoke.iterator() {
                         if inv.id == invokeId {
@@ -1188,7 +1194,7 @@ impl Fsm {
     /// result of an \<invoke\> in another SCXML session, returnDoneEvent will cause the event
     /// done.invoke.\<id\> to be placed in the external event queue of that session, where \<id\> is
     /// the id generated in that session when the \<invoke\> was executed.
-    /// ```
+    /// ```ignore
     /// procedure exitInterpreter():
     ///     statesToExit = configuration.toList().sort(exitOrder)
     ///     for s in statesToExit:
@@ -1202,7 +1208,7 @@ impl Fsm {
     /// ```
     #[allow(non_snake_case)]
     fn exitInterpreter(&mut self, datamodel: &mut dyn Datamodel) {
-        let statesToExit = datamodel.global().configuration.toList().sort(
+        let statesToExit = get_global!(datamodel).configuration.toList().sort(
             &|s1, s2| { self.state_exit_order(s1, s2) });
         for sid in statesToExit.iterator() {
             let mut content: Vec<ExecutableContentId> = Vec::new();
@@ -1223,7 +1229,7 @@ impl Fsm {
                 self.cancelInvoke(&inv)
             }
 
-            datamodel.global().configuration.delete(sid);
+            get_global!(datamodel).configuration.delete(sid);
             {
                 let s = self.get_state_by_id(*sid);
                 if self.isFinalState(s) && self.isSCXMLElement(s.parent) {
@@ -1269,7 +1275,7 @@ impl Fsm {
     /// When all atomic states have been visited and transitions selected, filter the set of enabled
     /// transitions, removing any that are preempted by other transitions, then return the
     /// resulting set.
-    /// ```
+    /// ```ignore
     ///
     /// function selectEventlessTransitions():
     ///     enabledTransitions = new OrderedSet()
@@ -1288,7 +1294,7 @@ impl Fsm {
         self.tracer.enter_method("selectEventlessTransitions");
 
         let mut enabledTransitions: OrderedSet<TransitionId> = OrderedSet::new();
-        let atomicStates = datamodel.global().configuration.toList()
+        let atomicStates = get_global!(datamodel).configuration.toList()
             .filter_by(&|sid| -> bool { self.isAtomicState(self.get_state_by_id(*sid)) })
             .sort(&|s1, s2| { self.state_document_order(s1, s2) });
         self.tracer.trace_argument("atomicStates", &atomicStates);
@@ -1324,7 +1330,7 @@ impl Fsm {
     /// The purpose of the selectTransitions()procedure is to collect the transitions that are enabled by this event in the current configuration.
     ///
     /// Create an empty set of enabledTransitions. For each atomic state , find a transition whose 'event' attribute matches event and whose condition evaluates to true. If multiple matching transitions are present, take the first in document order. If none are present, search in the state's ancestors in ancestry order until one is found. As soon as such a transition is found, add it to enabledTransitions, and proceed to the next atomic state in the configuration. If no such transition is found in the state or its ancestors, proceed to the next state in the configuration. When all atomic states have been visited and transitions selected, filter out any preempted transitions and return the resulting set.
-    /// ```
+    /// ```ignore
     /// function selectTransitions(event):
     ///     enabledTransitions = new OrderedSet()
     ///     atomicStates = configuration.toList().filter(isAtomicState).sort(documentOrder)
@@ -1340,8 +1346,9 @@ impl Fsm {
     #[allow(non_snake_case)]
     fn selectTransitions(&mut self, datamodel: &mut dyn Datamodel, event: &Event) -> OrderedSet<TransitionId> {
         self.tracer.enter_method("selectTransitions");
+
         let mut enabledTransitions: OrderedSet<TransitionId> = OrderedSet::new();
-        let atomicStates = datamodel.global().configuration.toList()
+        let atomicStates = get_global!(datamodel).configuration.toList()
             .filter_by(&|sid| -> bool { self.isAtomicStateId(sid) }).sort(
             &|s1, s2| { self.state_document_order(s1, s2) });
         for state in atomicStates.iterator() {
@@ -1396,7 +1403,7 @@ impl Fsm {
     /// any other transitions.
     ///
     /// We start with a list of enabledTransitions and produce a conflict-free list of filteredTransitions. For each t1 in enabledTransitions, we test it against all t2 that are already selected in filteredTransitions. If there is a conflict, then if t1's source state is a descendant of t2's source state, we prefer t1 and say that it preempts t2 (so we we make a note to remove t2 from filteredTransitions). Otherwise, we prefer t2 since it was selected in an earlier state in document order, so we say that it preempts t1. (There's no need to do anything in this case since t2 is already in filteredTransitions. Furthermore, once one transition preempts t1, there is no need to test t1 against any other transitions.) Finally, if t1 isn't preempted by any transition in filteredTransitions, remove any transitions that it preempts and add it to that list.
-    /// ```
+    /// ```ignore
     /// function removeConflictingTransitions(enabledTransitions):
     ///     filteredTransitions = new OrderedSet()
     ///     //toList sorts the transitions in the order of the states that selected them
@@ -1454,7 +1461,7 @@ impl Fsm {
     /// The purpose of the microstep procedure is to process a single set of transitions. These may have been enabled by an external event, an internal event, or by the presence or absence of certain values in the data model at the current point in time. The processing of the enabled transitions must be done in parallel ('lock step') in the sense that their source states must first be exited, then their actions must be executed, and finally their target states entered.
     ///
     /// If a single atomic state is active, then enabledTransitions will contain only a single transition. If multiple states are active (i.e., we are in a parallel region), then there may be multiple transitions, one per active atomic state (though some states may not select a transition.) In this case, the transitions are taken in the document order of the atomic states that selected them.
-    /// ```
+    /// ```ignore
     /// procedure microstep(enabledTransitions):
     ///     exitStates(enabledTransitions)
     ///     executeTransitionContent(enabledTransitions)
@@ -1476,7 +1483,7 @@ impl Fsm {
     ///
     /// For each state s in the list, if s has a deep history state h, set the history value of h to be the list of all atomic descendants of s that are members in the current configuration, else set its value to be the list of all immediate children of s that are members of the current configuration. Again for each state s in the list, first execute any onexit handlers, then cancel any ongoing invocations, and finally remove s from the current configuration.
     ///
-    /// ```
+    /// ```ignore
     /// procedure exitStates(enabledTransitions):
     ///     statesToExit = computeExitSet(enabledTransitions)
     ///     for s in statesToExit:
@@ -1501,14 +1508,19 @@ impl Fsm {
         self.tracer.enter_method("exitStates");
 
         let statesToExit = self.computeExitSet(datamodel, enabledTransitions);
-        for s in statesToExit.iterator() {
-            datamodel.global().statesToInvoke.delete(s);
+
+        {
+            let mut gd = get_global!(datamodel);
+
+            for s in statesToExit.iterator() {
+                gd.statesToInvoke.delete(s);
+            }
         }
         let statesToExitSorted = statesToExit.sort(
             &|s1, s2| { self.state_exit_order(s1, s2) });
         let mut ahistory: HashTable<StateId, OrderedSet<StateId>> = HashTable::new();
 
-        let configStateList = self.set_to_state_list(&datamodel.global().configuration);
+        let configStateList = self.set_to_state_list(&get_global!(datamodel).configuration);
 
         for sid in statesToExitSorted.iterator() {
             let s = self.get_state_by_id(*sid);
@@ -1521,13 +1533,13 @@ impl Fsm {
                             &|s0| -> bool { self.isAtomicState(*s0) && self.isDescendant(s0.id, s.id) }));
                     ahistory.put_move(h.id, stateIdList);
                 } else {
-                    ahistory.put(h.id, &datamodel.global().configuration.toList().filter_by(
+                    ahistory.put(h.id, &get_global!(datamodel).configuration.toList().filter_by(
                         &|s0| -> bool { self.get_state_by_id(*s0).parent == s.id }).to_set());
                 }
             }
         }
 
-        datamodel.global().historyValue.put_all(&ahistory);
+        get_global!(datamodel).historyValue.put_all(&ahistory);
 
         for sid in statesToExitSorted.iterator() {
             let mut exe: List<ExecutableContentId> = List::new();
@@ -1553,7 +1565,7 @@ impl Fsm {
                 self.cancelInvokeId(*invokeId);
             }
 
-            datamodel.global().configuration.delete(sid)
+            get_global!(datamodel).configuration.delete(sid)
         }
         self.tracer.exit_method("exitStates");
     }
@@ -1572,7 +1584,7 @@ impl Fsm {
     /// inside the history state's default transition. Finally, if s is a final state, generate
     /// relevant Done events. If we have reached a top-level final state, set running to false as a
     /// signal to stop processing.
-    /// ```
+    /// ```ignore
     ///    procedure enterStates(enabledTransitions):
     ///        statesToEnter = new OrderedSet()
     ///        statesForDefaultEntry = new OrderedSet()
@@ -1617,8 +1629,9 @@ impl Fsm {
                 self.tracer.trace_enter_state(&self.get_state_by_id(*s));
             }
             {
-                datamodel.global().configuration.add(*s);
-                datamodel.global().statesToInvoke.add(*s);
+                let mut gd = get_global!(datamodel);
+                gd.configuration.add(*s);
+                gd.statesToInvoke.add(*s);
             }
             let mut to_init: StateId = 0;
             {
@@ -1658,7 +1671,7 @@ impl Fsm {
                 let state_s = self.get_state_by_id(*s);
                 let parent: StateId = state_s.parent;
                 if self.isSCXMLElement(parent) {
-                    datamodel.global().running = false;
+                    get_global!(datamodel).running = false;
                 } else {
                     let parentS = self.get_state_by_id(parent);
                     self.enqueue_internal(datamodel, Event::new("done.state.", &parentS.name, &state_s.donedata));
@@ -1680,7 +1693,7 @@ impl Fsm {
     /// Put an event into the internal queue.
     pub fn enqueue_internal(&mut self, datamodel: &mut dyn Datamodel, event: Event) {
         self.tracer.event_internal_send(&event);
-        datamodel.global().internalQueue.enqueue(event);
+        get_global!(datamodel).internalQueue.enqueue(event);
     }
 
     #[allow(non_snake_case)]
@@ -1735,7 +1748,7 @@ impl Fsm {
     /// (This will be the source state in the case of internal transitions) or the least common compound ancestor
     /// state of the source state and target states of t (in the case of external transitions. Add to the statesToExit
     /// set all states in the configuration that are descendants of the domain.
-    /// ```
+    /// ```ignore
     /// function computeExitSet(transitions)
     ///     statesToExit = new OrderedSet
     ///     for t in transitions:
@@ -1751,11 +1764,12 @@ impl Fsm {
         self.tracer.enter_method("computeExitSet");
         self.tracer.trace_argument("transitions", &transitions);
         let mut statesToExit: OrderedSet<StateId> = OrderedSet::new();
+
         for tid in transitions.iterator() {
             let t = self.get_transition_by_id(*tid);
             if !t.target.is_empty() {
                 let domain = self.getTransitionDomain(datamodel, t);
-                for s in datamodel.global().configuration.iterator() {
+                for s in get_global!(datamodel).configuration.iterator() {
                     if self.isDescendant(*s, domain) {
                         statesToExit.add(*s);
                     }
@@ -1770,7 +1784,7 @@ impl Fsm {
     /// #W3C says:
     /// # procedure executeTransitionContent(enabledTransitions)
     /// For each transition in the list of enabledTransitions, execute its executable content.
-    /// ```
+    /// ```ignore
     /// procedure executeTransitionContent(enabledTransitions):
     ///     for t in enabledTransitions:
     ///         executeContent(t)
@@ -1794,13 +1808,13 @@ impl Fsm {
     /// that are not atomic states, add all of their (default) descendants until we reach one or
     /// more atomic states. Then add any ancestors that will be entered within the domain of the
     /// transition. (Ancestors outside of the domain of the transition will not have been exited.)
-    /// ```
+    /// ```ignore
     /// procedure computeEntrySet(transitions, statesToEnter, statesForDefaultEntry, defaultHistoryContent)
     ///     for t in transitions:
     ///         for s in t.target:
     ///             addDescendantStatesToEnter(s,statesToEnter,statesForDefaultEntry, defaultHistoryContent)
     ///         ancestor = getTransitionDomain(t)
-    ///         for s in getEffectiveTargetStates(t)):
+    ///         for s in getEffectiveTargetStates(t):
     ///             addAncestorStatesToEnter(s, ancestor, statesToEnter, statesForDefaultEntry, defaultHistoryContent)
     /// ```
     #[allow(non_snake_case)]
@@ -1838,7 +1852,7 @@ impl Fsm {
     /// may not be children of 'state', add any ancestors between the default initial states and 'state'.
     /// Otherwise, if state is a parallel state, recursively call addStatesToEnter on any of its child states that
     /// don't already have a descendant on statesToEnter.
-    /// ```
+    /// ```ignore
     /// procedure addDescendantStatesToEnter(state,statesToEnter,statesForDefaultEntry, defaultHistoryContent):
     ///     if isHistoryState(state):
     ///         if historyValue[state.id]:
@@ -1874,9 +1888,9 @@ impl Fsm {
 
         let state = self.get_state_by_id(sid);
         if self.isHistoryState(sid) {
-            if datamodel.global().historyValue.has(sid) {
+            if get_global!(datamodel).historyValue.has(sid) {
                 let mut stateIds: Vec<StateId> = Vec::new();
-                for s in datamodel.global().historyValue.get(sid).iterator()
+                for s in get_global!(datamodel).historyValue.get(sid).iterator()
                 {
                     stateIds.push(*s);
                 }
@@ -1927,7 +1941,7 @@ impl Fsm {
     /// #W3C says:
     /// # procedure addAncestorStatesToEnter(state, ancestor, statesToEnter, statesForDefaultEntry, defaultHistoryContent)
     /// Add to statesToEnter any ancestors of 'state' up to, but not including, 'ancestor' that must be entered in order to enter 'state'. If any of these ancestor states is a parallel state, we must fill in its descendants as well.
-    /// ```
+    /// ```ignore
     /// procedure addAncestorStatesToEnter(state, ancestor, statesToEnter, statesForDefaultEntry, defaultHistoryContent)
     ///     for anc in getProperAncestors(state,ancestor):
     ///         statesToEnter.add(anc)
@@ -1961,7 +1975,7 @@ impl Fsm {
     /// Return true if s is a compound \<state\> and one of its children is an active <final> state
     /// (i.e. is a member of the current configuration), or if s is a \<parallel\> state and
     /// isInFinalState is true of all its children.
-    /// ```
+    /// ```ignore
     /// function isInFinalState(s):
     ///     if isCompoundState(s):
     ///         return getChildStates(s).some(lambda s: isFinalState(s) and configuration.isMember(s));
@@ -1973,7 +1987,7 @@ impl Fsm {
     #[allow(non_snake_case)]
     fn isInFinalState(&self, datamodel: &dyn Datamodel, s: StateId) -> bool {
         if self.isCompoundState(s) {
-            self.getChildStates(s).some(&|cs: &StateId| -> bool { self.isFinalStateId(*cs) && datamodel.global_s().configuration.isMember(cs) })
+            self.getChildStates(s).some(&|cs: &StateId| -> bool { self.isFinalStateId(*cs) && datamodel.global_s().lock().unwrap().configuration.isMember(cs) })
         } else if self.isParallelState(s) {
             self.getChildStates(s).every(&|cs: &StateId| -> bool { self.isInFinalState(datamodel, *cs) })
         } else {
@@ -1988,7 +2002,7 @@ impl Fsm {
     /// 1) all states that are exited or entered as a result of taking 'transition'
     ///    are descendants of it
     /// 2) no descendant of it has this property.
-    /// ```
+    /// ```ignore
     /// function getTransitionDomain(t)
     ///     tstates = getEffectiveTargetStates(t)
     ///     if not tstates:
@@ -2028,7 +2042,7 @@ impl Fsm {
     /// Note that there is guaranteed to be such an element since the <scxml> wrapper element is a
     /// common ancestor of all states. Note also that since we are speaking of proper ancestor
     /// (parent or parent of a parent, etc.) the LCCA is never a member of stateList.
-    /// ```
+    /// ```ignore
     /// function findLCCA(stateList):
     ///     for anc in getProperAncestors(stateList.head(),null).filter(isCompoundStateOrScxmlElement):
     ///         if stateList.tail().every(lambda s: isDescendant(s,anc)):
@@ -2054,7 +2068,7 @@ impl Fsm {
     /// #W3C says:
     /// # function getEffectiveTargetStates(transition)
     /// Returns the states that will be the target when 'transition' is taken, dereferencing any history states.
-    /// ```
+    /// ```ignore
     /// function getEffectiveTargetStates(transition)
     ///     targets = new OrderedSet()
     ///     for s in transition.target
@@ -2074,8 +2088,8 @@ impl Fsm {
         let mut targets: OrderedSet<StateId> = OrderedSet::new();
         for sid in &transition.target {
             if self.isHistoryState(*sid) {
-                if datamodel.global().historyValue.has(*sid) {
-                    targets.union(datamodel.global().historyValue.get(*sid));
+                if get_global!(datamodel).historyValue.has(*sid) {
+                    targets.union(get_global!(datamodel).historyValue.get(*sid));
                 } else {
                     let s = self.get_state_by_id(*sid);
                     // History states have exactly one "transition"
@@ -2658,7 +2672,7 @@ mod tests {
     use crate::{Event, EventType, fsm, fsm_executor, reader};
     use crate::fsm::List;
     use crate::fsm::OrderedSet;
-    use crate::tracer::{TraceMode, Tracer};
+    use crate::tracer::TraceMode;
 
     fn test_send(sender: &Sender<Box<Event>>, e: Event)
     {

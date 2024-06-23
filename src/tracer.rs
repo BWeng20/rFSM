@@ -3,8 +3,11 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter};
 use std::fmt;
 use std::ops::DerefMut;
+#[cfg(test)]
+use std::println as info;
 use std::str::FromStr;
 
+#[cfg(not(test))]
 use log::info;
 
 use crate::{ArgOption, fsm};

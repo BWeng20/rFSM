@@ -1,9 +1,12 @@
 use std::{process, thread};
+#[cfg(test)]
+use std::{println as error, println as warn};
 use std::collections::HashMap;
 use std::sync::{Arc, mpsc, Mutex};
 use std::sync::mpsc::Sender;
 use std::time::Duration;
 
+#[cfg(not(test))]
 use log::{error, warn};
 
 use crate::fsm::State;

@@ -3,10 +3,13 @@ extern crate core;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::{Path, PathBuf};
+#[cfg(test)]
+use std::println as info;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Sender;
 use std::thread::JoinHandle;
 
+#[cfg(not(test))]
 use log::info;
 
 use crate::{ArgOption, fsm, reader};

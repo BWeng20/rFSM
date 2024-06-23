@@ -6,9 +6,12 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+#[cfg(test)]
+use std::println as debug;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU32, Ordering};
 
+#[cfg(not(test))]
 use log::debug;
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::events::attributes::Attributes;

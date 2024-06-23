@@ -26,7 +26,7 @@ pub trait EventIOProcessor: ToAny + Debug + Send {
     fn get_handle(&mut self) -> &mut EventIOProcessorHandle;
 
     fn add_fsm(&mut self, fsm: &Fsm, datamodel: &mut dyn Datamodel) {
-        self.get_handle().fsms.insert(fsm.session_id, datamodel.global_s().externalQueue.sender.clone());
+        self.get_handle().fsms.insert(fsm.session_id, datamodel.global_s().lock().unwrap().externalQueue.sender.clone());
     }
 
     fn get_copy(&self) -> Box<dyn EventIOProcessor>;

@@ -3,7 +3,11 @@
 use std::any::Any;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
+#[cfg(test)]
+use std::println as info;
+use std::sync::Arc;
 
+#[cfg(not(test))]
 use log::info;
 
 use crate::event_io_processor::EventIOProcessor;
@@ -16,6 +20,27 @@ pub const NULL_DATAMODEL_LC: &str = "null";
 pub const SCXML_EVENT_PROCESSOR: &str = "http://www.w3.org/TR/scxml/#SCXMLEventProcessor";
 pub const BASIC_HTTP_EVENT_PROCESSOR: &str = "http://www.w3.org/TR/scxml/#BasicHTTPEventProcessor";
 
+/// Gets the global data store from a GlobalDataAccess.
+#[macro_export]
+macro_rules! access_global {
+    ($x:expr) => {
+       $x.lock().unwrap()
+    }
+}
+
+
+
+/// Gets the global data store from datamodel.
+#[macro_export]
+macro_rules! get_global {
+    ($x:expr) => {
+       $x.global().lock().unwrap()
+    }
+}
+
+/// Currently we assume that we need access to the global-data via a mutex.
+/// If not, change this type to "GlobalData" and adapt macros access_global and get_global above.
+pub type GlobalDataAccess = std::sync::Arc<std::sync::Mutex<GlobalData>>;
 
 /// Data model interface trait.
 /// #W3C says:
@@ -32,9 +57,9 @@ pub trait Datamodel {
     /// As the data model needs access to other global variables and rust doesn't like
     /// accessing data of parents (Fsm in this case) from inside a member (the actual Datamodel), most global data is
     /// store in the "GlobalData" struct that is owned by the data model.
-    fn global(&mut self) -> &mut GlobalData;
+    fn global(&mut self) -> &mut GlobalDataAccess;
 
-    fn global_s(&self) -> &GlobalData;
+    fn global_s(&self) -> &GlobalDataAccess;
 
     /// Get the name of the data model as defined by the \<scxml\> attribute "datamodel".
     fn get_name(self: &Self) -> &str;
@@ -90,7 +115,7 @@ pub trait Datamodel {
     fn executeContent(&mut self, fsm: &Fsm, contentId: ExecutableContentId);
 
     fn internal_error_execution(&mut self) {
-        self.global().internalQueue.enqueue(Event::error_execution());
+        get_global!(self).internalQueue.enqueue(Event::error_execution());
     }
 }
 
@@ -123,25 +148,25 @@ pub trait Datamodel {
 ///   supported in the Null Data Model.
 #[derive(Debug)]
 pub struct NullDatamodel {
-    pub global: GlobalData,
+    pub global: GlobalDataAccess,
     pub io_processors: HashMap<String, Box<dyn EventIOProcessor>>,
 }
 
 impl NullDatamodel {
     pub fn new() -> NullDatamodel {
         NullDatamodel {
-            global: GlobalData::new(),
+            global: Arc::new(std::sync::Mutex::new(GlobalData::new())),
             io_processors: HashMap::new(),
         }
     }
 }
 
 impl Datamodel for NullDatamodel {
-    fn global(&mut self) -> &mut GlobalData {
+    fn global(&mut self) -> &mut GlobalDataAccess {
         &mut self.global
     }
 
-    fn global_s(&self) -> &GlobalData {
+    fn global_s(&self) -> &GlobalDataAccess {
         &self.global
     }
 

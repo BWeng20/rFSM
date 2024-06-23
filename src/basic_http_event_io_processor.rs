@@ -1,3 +1,5 @@
+#[cfg(test)]
+use std::{println as debug, println as info, println as error};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -17,6 +19,7 @@ use hyper::body::Bytes;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
+#[cfg(not(test))]
 use log::{debug, error, info};
 use tokio::net::TcpListener;
 

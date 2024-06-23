@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A Simple FSM that wait for some event -->
+<scxml xmlns="http://www.w3.org/2005/07/scxml" initial="s0" version="1.0" datamodel="ecmascript">
+
+    <state id="s0">
+        <transition event="go" target="s1"/>
+    </state>
+
+    <state id="s1">
+        <transition event="go" target="s2"/>
+    </state>
+
+    <state id="s2">
+        <transition event="go" target="end"/>
+    </state>
+
+    <final id="end">
+        <onentry>
+            <log expr="'Finished!!!'"/>
+        </onentry>
+    </final>
+
+</scxml>

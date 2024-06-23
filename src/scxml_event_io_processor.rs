@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
+#[cfg(test)]
+use std::println as info;
 use std::sync::mpsc::Sender;
 
+#[cfg(not(test))]
 use log::info;
 
 use crate::datamodel::SCXML_EVENT_PROCESSOR;

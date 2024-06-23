@@ -2,30 +2,30 @@
 //! See [W3C:The ECMAScript Data Model](https://www.w3.org/TR/scxml/#ecma-profile).
 //! See [GitHub:Boa Engine](https://github.com/boa-dev/boa).
 
+#[cfg(test)]
+use std::{println as debug, println as info, println as warn, println as error};
 use std::collections::HashMap;
 use std::str::FromStr;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use boa_engine::{
-    Context,
-    js_string,
-    JsError,
-    JsNativeError,
-    JsValue, native_function::NativeFunction, property::Attribute, Source,
-};
+use boa_engine::{Context, js_string, JsError, JsValue, native_function::NativeFunction, Source};
+use boa_engine::context::ContextBuilder;
 use boa_engine::JsResult;
-use boa_engine::object::builtins::JsMap;
+use boa_engine::object::builtins::{JsMap, JsSet};
 use boa_engine::value::Type;
-use boa_gc::GcRefCell;
+#[cfg(not(test))]
 use log::{debug, error, info, warn};
 
-use crate::datamodel::{Data, Datamodel, DataStore};
+use crate::access_global;
+use crate::datamodel::{Data, Datamodel, DataStore, GlobalDataAccess};
 use crate::event_io_processor::{EventIOProcessor, SYS_IO_PROCESSORS};
 use crate::executable_content::{DefaultExecutableContentTracer, ExecutableContent, ExecutableContentTracer};
 use crate::fsm::{ExecutableContentId, Fsm, GlobalData, State, StateId};
 
 pub const ECMA_SCRIPT: &str = "ECMAScript";
 pub const ECMA_SCRIPT_LC: &str = "ecmascript";
+pub const FSM_CONFIGURATION: &str = "_fsm_configuration";
 
 
 static CONTEXT_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
@@ -34,11 +34,11 @@ static CONTEXT_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 pub struct ECMAScriptDatamodel {
     pub data: DataStore,
     pub context_id: u32,
-    pub global_data: GlobalData,
+    pub global_data: GlobalDataAccess,
     pub context: Context,
     pub tracer: Option<Box<dyn ExecutableContentTracer>>,
     pub io_processors: HashMap<String, Box<dyn EventIOProcessor>>,
-    pub all_names: Vec<String>,
+    pub id_to_state_names: HashMap<StateId, String>,
 }
 
 fn js_to_string(jv: &JsValue, ctx: &mut Context) -> String {
@@ -62,18 +62,17 @@ fn log_js(_this: &JsValue, args: &[JsValue], ctx: &mut Context) -> Result<JsValu
     Ok(JsValue::Null)
 }
 
-
 impl ECMAScriptDatamodel {
     pub fn new() -> ECMAScriptDatamodel {
         let e = ECMAScriptDatamodel
         {
             data: DataStore::new(),
             context_id: CONTEXT_ID_COUNTER.fetch_add(1, Ordering::Relaxed),
-            global_data: GlobalData::new(),
-            context: Context::default(),
+            global_data: Arc::new(Mutex::new(GlobalData::new())),
+            context: ContextBuilder::new().build().unwrap(),
             tracer: Some(Box::new(DefaultExecutableContentTracer::new())),
             io_processors: HashMap::new(),
-            all_names: Vec::new(),
+            id_to_state_names: HashMap::new(),
         };
         e
     }
@@ -114,16 +113,39 @@ impl ECMAScriptDatamodel {
     }
 
     fn eval(&mut self, source: &str) -> JsResult<JsValue> {
+        self.update_global_data();
         self.context.eval(Source::from_bytes(source))
+    }
+
+
+    fn set_js_property<V>(&mut self, name: &str, value: V)
+    where
+        V: Into<JsValue>,
+    {
+        _ = self.context.global_object().set(js_string!(name), value, false, &mut self.context);
+    }
+
+    fn update_global_data(&mut self) {
+        let set = JsSet::new(&mut self.context);
+        for state in access_global!(self.global_data).configuration.iterator() {
+            match self.id_to_state_names.get(state) {
+                None => {
+                    error!("State {} not found in state-names {:?}", state, self.id_to_state_names);
+                }
+                Some(state_name) => {
+                    let _ = set.add(js_string!(state_name.as_str()), &mut self.context);
+                }
+            }
+        }
+        self.set_js_property(FSM_CONFIGURATION, set);
     }
 }
 
-
 impl Datamodel for ECMAScriptDatamodel {
-    fn global(&mut self) -> &mut GlobalData {
+    fn global(&mut self) -> &mut GlobalDataAccess {
         &mut self.global_data
     }
-    fn global_s(&self) -> &GlobalData {
+    fn global_s(&self) -> &GlobalDataAccess {
         &self.global_data
     }
 
@@ -132,30 +154,24 @@ impl Datamodel for ECMAScriptDatamodel {
     }
 
     fn implement_mandatory_functionality(&mut self, fsm: &mut Fsm) {
-
-        // Implement "In" function.
-        for (sn, _sid) in &fsm.statesNames {
-            _ = self.all_names.push(sn.clone());
-        }
-
         let ctx = &mut self.context;
 
-        let _ = ctx.register_global_callable(js_string!("In"), 1,
-                                             NativeFunction::from_copy_closure_with_captures(move |_this: &JsValue, args: &[JsValue], captures, ctx: &mut Context| {
-                                                 let mut captures = captures.borrow_mut();
-                                                 let all_names = &mut *captures;
-                                                 if args.len() > 0 {
-                                                     let name = &js_to_string(&args[0], ctx);
+        // Implement "In" function.
 
-                                                     let m = all_names.contains(name);
-                                                     Ok(JsValue::from(m))
-                                                 } else {
-                                                     Err(JsNativeError::typ().with_message("Missing argument").into())
-                                                 }
-                                             }, GcRefCell::new(self.all_names.clone())));
+        for state in fsm.states.as_slice() {
+            self.id_to_state_names.insert(state.id, state.name.clone());
+        }
 
-        let _ = ctx.register_global_callable(js_string!("log"), 1,
-                                             NativeFunction::from_copy_closure(log_js));
+        let _ = ctx.eval(
+            Source::from_bytes(r##"
+                function In(state) {
+                   return _fsm_configuration.has( state );
+                }
+            "##)
+        );
+
+        // Implement "log" function.
+        let _ = ctx.register_global_callable(js_string!("log"), 1, NativeFunction::from_copy_closure(log_js));
 
         // set system variable "_ioprocessors"
         {
@@ -168,7 +184,7 @@ impl Datamodel for ECMAScriptDatamodel {
                 // @TODO
                 _ = io_processors_js.create_data_property(js_string!(name.as_str()), processor_js, ctx);
             }
-            _ = self.context.register_global_property(js_string!(SYS_IO_PROCESSORS), io_processors_js, Attribute::all());
+            self.set_js_property(SYS_IO_PROCESSORS, io_processors_js);
         }
     }
 
@@ -179,14 +195,14 @@ impl Datamodel for ECMAScriptDatamodel {
             s.push(sn.clone());
         }
         let state_obj: &State = fsm.get_state_by_id_mut(data_state);
-        let ctx = &mut self.context;
 
         // Set all (simple) global variables.
         for (name, data) in &state_obj.data.values
         {
-            match ctx.eval(Source::from_bytes(data.value.as_ref().unwrap().as_str())) {
+            let rs = self.context.eval(Source::from_bytes(data.value.as_ref().unwrap().as_str()));
+            match rs {
                 Ok(val) => {
-                    _ = ctx.register_global_property(js_string!(name.as_str()), val, Attribute::all());
+                    self.set_js_property(name.as_str(), val);
                 }
                 Err(_) => {
                     todo!()
@@ -198,7 +214,7 @@ impl Datamodel for ECMAScriptDatamodel {
     fn set(self: &mut ECMAScriptDatamodel, name: &str, data: Box<Data>) {
         let str_val = data.to_string().clone();
         self.data.set(name, data);
-        _ = self.context.register_global_property(js_string!(name), js_string!(str_val), Attribute::all());
+        self.set_js_property(name, js_string!(str_val));
     }
 
     fn set_event(&mut self, _event: &crate::fsm::Event) {
@@ -250,6 +266,7 @@ impl Datamodel for ECMAScriptDatamodel {
     fn execute_for_each(&mut self, _fsm: &Fsm, array_expression: &str, item_name: &str, index: &str,
                         execute_body: &mut dyn FnMut(&mut dyn Datamodel)) {
         debug!("ForEach: array: {}", array_expression );
+        self.update_global_data();
         match self.context.eval(Source::from_bytes(array_expression)) {
             Ok(r) => {
                 match r.get_type() {
@@ -259,8 +276,8 @@ impl Datamodel for ECMAScriptDatamodel {
                         let ob = obj.borrow();
                         let p = ob.properties();
                         let mut idx: i64 = 1;
-                        let _reg_item = self.context.register_global_property(js_string!(item_name), JsValue::Null, Attribute::all());
-                        let item_declaration = self.eval(item_name);
+                        let _reg_item = self.set_js_property(item_name, JsValue::Null);
+                        let item_declaration = self.context.eval(Source::from_bytes(item_name));
                         match item_declaration {
                             Ok(_) => {
                                 for item_prop in p.index_property_values() {
@@ -270,9 +287,9 @@ impl Datamodel for ECMAScriptDatamodel {
                                         match item_prop.value() {
                                             Some(item) => {
                                                 debug!("ForEach: #{} {}={:?}", idx , item_name, item );
-                                                let _ = self.context.register_global_property(js_string!(item_name), item.clone(), Attribute::all());
+                                                self.set_js_property(item_name, item.clone());
                                                 if !index.is_empty() {
-                                                    let _ = self.context.register_global_property(js_string!(index), idx, Attribute::all());
+                                                    self.set_js_property(index, idx);
                                                 }
                                                 execute_body(self);
                                             }
@@ -326,13 +343,15 @@ impl Datamodel for ECMAScriptDatamodel {
 
 #[cfg(test)]
 mod tests {
+    use log::info;
+
     use crate::reader;
     use crate::test::run_test_manual;
     use crate::tracer::TraceMode;
 
     #[test]
     fn in_function() {
-        println!("Creating The SM:");
+        info!("Creating The SM:");
         let sm = reader::read_from_xml(
             r##"<scxml initial='Main' datamodel='ecmascript'>
               <state id='Main'>
@@ -341,10 +360,21 @@ mod tests {
                       <raise event='MainIsIn'/>
                    </if>
                 </onentry>
-                <transition event="MainIsIn" target="pass"/>
+                <transition event="MainIsIn" target="pass_1"/>
                 <transition event="*" target="fail"/>
               </state>
-              <final id='Pass'>
+              <state id='pass_1'>
+                <onentry>
+                   <if cond='In("Main")'>
+                      <log expr='"Still in main?"'/>
+                   <elseif cond='!In("Main")'/>
+                      <raise event='MainIsNotIn'/>
+                   </if>
+                </onentry>
+                <transition event="MainIsNotIn" target="pass"/>
+                <transition event="*" target="fail"/>
+              </state>
+              <final id='pass'>
                 <onentry>
                   <log label='Outcome' expr='"pass"'/>
                 </onentry>
@@ -358,11 +388,11 @@ mod tests {
 
         assert!(!sm.is_err(), "FSM shall be parsed");
 
-        let mut fsm = sm.unwrap();
+        let fsm = sm.unwrap();
         let mut final_expected_configuration = Vec::new();
-        final_expected_configuration.push("main".to_string());
+        final_expected_configuration.push("pass".to_string());
 
-        assert!( !run_test_manual(&"In_function", fsm, TraceMode::STATES, 2000 as u64, &final_expected_configuration ) );
+        assert!(run_test_manual(&"In_function", fsm, TraceMode::STATES, 2000 as u64, &final_expected_configuration));
     }
 }
 

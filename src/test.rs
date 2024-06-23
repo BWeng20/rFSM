@@ -1,9 +1,12 @@
-use std::{process};
+#[cfg(test)]
+use std::{println as error, println as info};
 use std::fs::File;
 use std::io::{BufReader, Read};
-use std::path::{PathBuf};
+use std::path::PathBuf;
+use std::process;
 use std::sync::{Arc, Mutex};
 
+#[cfg(not(test))]
 use log::{error, info};
 #[cfg(feature = "json-config")]
 use serde::Deserialize;

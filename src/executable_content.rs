@@ -1,13 +1,16 @@
 //! Implementation of "executable content" elements
 //! See [W3C:Executable Content](https://www.w3.org/TR/scxml/#executable)
 
+#[cfg(test)]
+use std::{println as info, println as warn};
 use std::fmt::{Debug, Formatter};
 
 use lazy_static::lazy_static;
+#[cfg(not(test))]
 use log::{info, warn};
 use regex::Regex;
 
-use crate::{Event, EventType};
+use crate::{Event, EventType, get_global};
 use crate::datamodel::{Datamodel, SCXML_EVENT_PROCESSOR, ToAny};
 use crate::fsm::{ExecutableContentId, Fsm, vec_to_string};
 
@@ -199,7 +202,7 @@ impl Debug for Raise {
 impl ExecutableContent for Raise {
     fn execute(&self, datamodel: &mut dyn Datamodel, _fsm: &Fsm) {
         let event = Event::new("", &self.event, &None);
-        datamodel.global().internalQueue.enqueue(event);
+        get_global!(datamodel).internalQueue.enqueue(event);
     }
 
     fn get_type(&self) -> &str {
@@ -474,7 +477,7 @@ impl ExecutableContent for SendParameters {
             send_id = datamodel.execute(fsm, &self.name_location);
         }
 
-        let sender = datamodel.global().externalQueue.sender.clone();
+        let sender = get_global!(datamodel).externalQueue.sender.clone();
 
         if target.is_empty()
         {
