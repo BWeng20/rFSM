@@ -3,7 +3,8 @@
 
 #[cfg(test)]
 use std::{println as info, println as warn};
-use std::fmt::{Debug, Formatter};
+use std::fmt;
+use std::fmt::{Debug, Display, Formatter};
 
 use lazy_static::lazy_static;
 #[cfg(not(test))]
@@ -12,7 +13,7 @@ use regex::Regex;
 
 use crate::{Event, EventType, get_global};
 use crate::datamodel::{Datamodel, SCXML_EVENT_PROCESSOR, ToAny};
-use crate::fsm::{ExecutableContentId, Fsm, vec_to_string};
+use crate::fsm::{ExecutableContentId, Fsm, State, vec_to_string};
 
 pub const TARGET_INTERNAL: &str = "_internal";
 pub const TARGET_SCXML_EVENT_PROCESSOR: &str = "http://www.w3.org/TR/scxml/#SCXMLEventProcessor";
@@ -107,6 +108,13 @@ pub struct ForEach {
     pub content: ExecutableContentId,
 }
 
+/// Stores \<param\> elements for \<send\>, \<donedata\> or \<invoke\>
+pub struct Parameter {
+    pub name: String,
+    pub expr: String,
+    pub location: String,
+}
+
 pub struct SendParameters {
     pub name_location: String,
     /// The SCXML id.
@@ -125,6 +133,9 @@ pub struct SendParameters {
     pub content: String,
     /// expr-attribute of \<content\> child
     pub content_expr: String,
+
+    /// \<param\> children
+    pub params: Vec<Parameter>,
 }
 
 pub struct Cancel {
@@ -412,6 +423,23 @@ impl ExecutableContent for ForEach {
     }
 }
 
+impl Parameter {
+    pub fn new() -> Parameter {
+        Parameter {
+            name: "".to_string(),
+            expr: "".to_string(),
+            location: "".to_string(),
+        }
+    }
+}
+
+impl Display for Parameter {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Parameter{{name:{} expr:{} location:{}}}", self.name, self.expr, self.location)
+    }
+}
+
+
 impl SendParameters {
     pub fn new() -> SendParameters {
         SendParameters {
@@ -428,6 +456,7 @@ impl SendParameters {
             name_list: "".to_string(),
             content: "".to_string(),
             content_expr: "".to_string(),
+            params: Vec::new(),
         }
     }
 }
@@ -538,7 +567,8 @@ impl ExecutableContent for SendParameters {
             ("delay", &self.delay_ms.to_string()),
             ("delay_expr", &self.delay_expr),
             ("name_list", &self.name_list),
-            ("content", &self.content)
+            ("content", &self.content),
+            ("params", &vec_to_string(&self.params) )
         ]);
     }
 }
