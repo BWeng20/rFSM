@@ -517,7 +517,7 @@ pub struct Event {
     pub origin: String,
     pub origin_type: String,
     pub invoke_id: InvokeId,
-    pub data: Option<DoneData>,
+    pub data: HashMap<String,String>,
 }
 
 impl ToString for Event {
@@ -527,13 +527,16 @@ impl ToString for Event {
 }
 
 impl Event {
-    pub fn new(prefix: &str, id: &String, ev_data: &Option<DoneData>) -> Event {
+    pub fn new(prefix: &str, id: &String, ev_data: &Option<HashMap<String,String>>) -> Event {
         Event {
             name: format!("{}{}", prefix, id),
             etype: EventType::external,
             sendid: "".to_string(),
             origin: "".to_string(),
-            data: ev_data.clone(),
+            data: match ev_data {
+                None => { HashMap::new() }
+                Some(d) => { d.clone() }
+            },
             invoke_id: 0,
             origin_type: "".to_string(),
         }
@@ -545,7 +548,7 @@ impl Event {
             etype: EventType::external,
             sendid: "".to_string(),
             origin: "".to_string(),
-            data: None,
+            data: HashMap::new(),
             invoke_id: 0,
             origin_type: "".to_string(),
         }
@@ -557,7 +560,7 @@ impl Event {
             etype: EventType::platform,
             sendid: "".to_string(),
             origin: "".to_string(),
-            data: None,
+            data: HashMap::new(),
             invoke_id: 0,
             origin_type: "".to_string(),
         }
@@ -569,7 +572,7 @@ impl Event {
             etype: EventType::platform,
             sendid: "".to_string(),
             origin: "".to_string(),
-            data: None,
+            data: HashMap::new(),
             invoke_id: 0,
             origin_type: "".to_string(),
         }
@@ -1245,13 +1248,14 @@ impl Fsm {
     /// done.invoke.\<id\> to be placed in the external event queue of that session, where \<id\> is
     /// the id generated in that session when the \<invoke\> was executed.
     #[allow(non_snake_case)]
-    fn returnDoneEvent(&mut self, done_data: &Option<DoneData>) {
+    fn returnDoneEvent(&mut self, _done_data: &Option<DoneData>) {
         // TODO. Currently no "sender" is set by the calling code.
         if self.caller_invoke_id != 0 {
             match &self.caller_sender {
                 None => panic!("caller-sender not available but caller-invoke-id is set."),
                 Some(sender) => {
-                    match sender.send(Box::new(Event::new("done.invoke.", &self.caller_invoke_id.to_string(), done_data))) {
+                    // TODO: Evaluate done_data
+                    match sender.send(Box::new(Event::new("done.invoke.", &self.caller_invoke_id.to_string(), &None))) {
                         Err(e) => {
                             self.tracer.trace(format!("Failed to send 'done.invoke'. {}", e).as_str());
                         }
@@ -1674,7 +1678,9 @@ impl Fsm {
                     get_global!(datamodel).running = false;
                 } else {
                     let parentS = self.get_state_by_id(parent);
-                    self.enqueue_internal(datamodel, Event::new("done.state.", &parentS.name, &state_s.donedata));
+                    let data = HashMap::new();
+                    // TODO: Evaluate &state_s.donedata -> data
+                    self.enqueue_internal(datamodel, Event::new("done.state.", &parentS.name, &Some(data)));
                     let stateParent = self.get_state_by_id(parent);
                     let grandparent: StateId = stateParent.parent;
                     if self.isParallelState(grandparent) {
@@ -2666,8 +2672,10 @@ pub(crate) fn vec_to_string<T: Display>(v: &Vec<T>) -> String {
 #[cfg(test)]
 mod tests {
     use std::{thread, time};
+    use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
     use std::sync::mpsc::Sender;
+    use hyper::ext::HashMap;
 
     use crate::{Event, EventType, fsm, fsm_executor, reader};
     use crate::fsm::List;
@@ -3024,8 +3032,8 @@ mod tests {
 
         let empty_str = "".to_string();
 
-        test_send(&sender, Event { name: "ab".to_string(), etype: EventType::platform, sendid: "0".to_string(), origin: empty_str.clone(), origin_type: empty_str.clone(), invoke_id: 1, data: None });
-        test_send(&sender, Event { name: "exit".to_string(), etype: EventType::platform, sendid: "0".to_string(), origin: empty_str.clone(), origin_type: empty_str.clone(), invoke_id: 2, data: None });
+        test_send(&sender, Event { name: "ab".to_string(), etype: EventType::platform, sendid: "0".to_string(), origin: empty_str.clone(), origin_type: empty_str.clone(), invoke_id: 1, data: HashMap::new() });
+        test_send(&sender, Event { name: "exit".to_string(), etype: EventType::platform, sendid: "0".to_string(), origin: empty_str.clone(), origin_type: empty_str.clone(), invoke_id: 2, data: HashMap::new() });
 
         // TODO: How to check for timeouts??
         let _r = thread_handle.join();

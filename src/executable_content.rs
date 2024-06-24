@@ -3,6 +3,7 @@
 
 #[cfg(test)]
 use std::{println as info, println as warn};
+use std::collections::HashMap;
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
 
@@ -13,7 +14,7 @@ use regex::Regex;
 
 use crate::{Event, EventType, get_global};
 use crate::datamodel::{Datamodel, SCXML_EVENT_PROCESSOR, ToAny};
-use crate::fsm::{ExecutableContentId, Fsm, State, vec_to_string};
+use crate::fsm::{ExecutableContentId, Fsm, vec_to_string};
 
 pub const TARGET_INTERNAL: &str = "_internal";
 pub const TARGET_SCXML_EVENT_PROCESSOR: &str = "http://www.w3.org/TR/scxml/#SCXMLEventProcessor";
@@ -541,7 +542,7 @@ impl ExecutableContent for SendParameters {
                             origin: location.clone(),
                             origin_type: "".to_string(),
                             invoke_id: 0,
-                            data: None,
+                            data: HashMap::new(),
                         });
                         let _ignored = sender.send(event);
                     });
