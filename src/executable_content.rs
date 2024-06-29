@@ -10,6 +10,7 @@ use std::fmt::{Debug, Display, Formatter};
 use lazy_static::lazy_static;
 #[cfg(not(test))]
 use log::{info, warn};
+use log::error;
 use regex::Regex;
 
 use crate::{Event, EventType, get_global};
@@ -117,6 +118,7 @@ pub struct Parameter {
 }
 
 pub struct SendParameters {
+    /// The SCXML idlocation
     pub name_location: String,
     /// The SCXML id.
     pub name: String,
@@ -321,7 +323,9 @@ impl Log {
 impl ExecutableContent for Log {
     fn execute(&self, datamodel: &mut dyn Datamodel, fsm: &Fsm) {
         let l = datamodel.execute(fsm, &self.expression);
-        datamodel.log(&l);
+        if l.is_some() {
+            datamodel.log(&l.unwrap());
+        }
     }
 
     fn get_type(&self) -> &str {
@@ -475,81 +479,147 @@ impl ExecutableContent for SendParameters {
     /// If unable to dispatch, place "error.communication" in internal queue
     /// If target is not supported, place "error.execution" in internal queue
     fn execute(&self, datamodel: &mut dyn Datamodel, fsm: &Fsm) {
-        let target;
-        if self.target.is_empty()
-        {
-            if !self.target_expr.is_empty() {
-                target = datamodel.execute(fsm, &self.target_expr);
-            } else {
-                target = "".to_string();
-            }
-        } else {
-            target = self.target.clone();
-        };
-
-        let event_name;
-        if self.event.is_empty()
-        {
-            if !self.event_expr.is_empty() {
-                event_name = datamodel.execute(fsm, &self.event_expr);
-            } else {
-                event_name = "".to_string();
-            }
-        } else {
-            event_name = self.event.clone();
-        };
-
-        let send_id;
-
-        if self.name_location.is_empty() {
-            send_id = self.name.clone();
-        } else {
-            send_id = datamodel.execute(fsm, &self.name_location);
-        }
-
-        let sender = get_global!(datamodel).externalQueue.sender.clone();
-
-        if target.is_empty()
-        {
-            datamodel.internal_error_execution();
-        } else {
-            let delay_ms;
-            if !self.delay_expr.is_empty() {
-                let delay = datamodel.execute(fsm, &self.delay_expr);
-                delay_ms = parse_duration_to_milliseconds(&delay);
-            } else {
-                delay_ms = self.delay_ms as i64;
-            }
-            if target.eq(TARGET_INTERNAL) {
-                // Can't send timers via internal queue
-                datamodel.internal_error_execution();
-            } else {
-                if delay_ms < 0
-                {
-                    // Delay is invalid
-                    datamodel.internal_error_execution();
+        let target =
+            if self.target.is_empty()
+            {
+                if !self.target_expr.is_empty() {
+                    match datamodel.execute(fsm, &self.target_expr) {
+                        None => {
+                            // Error -> abort
+                            return;
+                        }
+                        Some(value) => {
+                            value
+                        }
+                    }
                 } else {
-                    let location =
-                        datamodel.get_io_processors().get_mut(SCXML_EVENT_PROCESSOR).map_or(
-                            "".to_string(),
-                            |io_processor| io_processor.get_location().to_string());
-                    fsm.schedule(delay_ms, move || {
-                        // @TODO: fill all fields correctly!
-                        let event = Box::new(Event {
-                            name: event_name.clone(),
-                            etype: EventType::external,
-                            sendid: send_id.clone(),
-                            origin: location.clone(),
-                            origin_type: "".to_string(),
-                            invoke_id: 0,
-                            data: HashMap::new(),
-                        });
-                        let _ignored = sender.send(event);
-                    });
+                    // TODO: Clarify. Missing target -> abort or ignore?
+                    datamodel.internal_error_execution();
+                    return;
+                }
+            } else {
+                self.target.clone()
+            };
+
+        let event_name =
+            if self.event.is_empty()
+            {
+                if !self.event_expr.is_empty() {
+                    match datamodel.execute(fsm, &self.event_expr) {
+                        None => {
+                            // Error -> abort
+                            return;
+                        }
+                        Some(name) => {
+                            name
+                        }
+                    }
+                } else {
+                    "".to_string()
+                }
+            } else {
+                self.event.clone()
+            };
+
+        let send_id =
+            if self.name_location.is_empty() {
+                self.name.clone()
+            } else {
+                match datamodel.get_by_location(self.name_location.as_str()) {
+                    None => {
+                        // Error -> abort
+                        return;
+                    }
+                    Some(id) => {
+                        id.value.unwrap()
+                    }
+                }
+            };
+
+        let mut data_map = HashMap::new();
+
+        for param in &self.params {
+            if !param.expr.is_empty() {
+                match datamodel.execute(fsm, &param.expr) {
+                    None => {
+                        //  W3C:\
+                        // ...if the evaluation of the 'expr' produces an error, the SCXML
+                        // Processor must place the error 'error.execution' on the internal event
+                        // queue and must ignore the name and value.
+                        error!("Send: expr of param {} is invalid - ignored", param);
+                    }
+                    Some(value) => {
+                        data_map.insert(param.name.clone(), value);
+                    }
+                }
+            } else if !param.location.is_empty() {
+                match datamodel.get_by_location(&param.location.as_str()) {
+                    None => {
+                        //  W3C:\
+                        // If the 'location' attribute does not refer to a valid location in
+                        // the data model, ..., the SCXML Processor must place the error
+                        // 'error.execution' on the internal event queue and must ignore the name
+                        // and value.
+                        error!("Send: location of param {} is invalid - ignored", param);
+                    }
+                    Some(data) => {
+                        data_map.insert(param.name.clone(), data.value.unwrap());
+                    }
                 }
             }
         }
+
+        let delay_ms =
+            if !self.delay_expr.is_empty() {
+                match datamodel.execute(fsm, &self.delay_expr) {
+                    None => {
+                        // Error -> Abort
+                        return;
+                    }
+                    Some(delay) => {
+                        parse_duration_to_milliseconds(&delay)
+                    }
+                }
+            } else {
+                self.delay_ms as i64
+            };
+
+        if delay_ms < 0
+        {
+            // Delay is invalid -> Abort
+            error!("Send: delay {} is negative", self.delay_expr);
+            datamodel.internal_error_execution();
+            return;
+        }
+
+        if delay_ms > 0 && target.eq(TARGET_INTERNAL) {
+            // Can't send via internal queue
+            error!("Send: illegal delay for target {}", target);
+            datamodel.internal_error_execution();
+        } else {
+            let location =
+                datamodel.get_io_processors().get_mut(SCXML_EVENT_PROCESSOR).map_or(
+                    "".to_string(),
+                    |io_processor| io_processor.get_location().to_string());
+
+            let sender = get_global!(datamodel).externalQueue.sender.clone();
+
+            fsm.schedule(delay_ms, move || {
+                // @TODO: fill all fields correctly!
+                let event = Box::new(Event {
+                    name: event_name.clone(),
+                    etype: EventType::external,
+                    sendid: send_id.clone(),
+                    origin: location.clone(),
+                    origin_type: "".to_string(),
+                    invoke_id: 0,
+                    data: data_map.clone(),
+                });
+                let _ignored = sender.send(event);
+            });
+        }
     }
+
 
     fn get_type(&self) -> &str {
         TYPE_SEND
@@ -569,7 +639,7 @@ impl ExecutableContent for SendParameters {
             ("delay_expr", &self.delay_expr),
             ("name_list", &self.name_list),
             ("content", &self.content),
-            ("params", &vec_to_string(&self.params) )
+            ("params", &vec_to_string(&self.params))
         ]);
     }
 }

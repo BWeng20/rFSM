@@ -20,6 +20,9 @@ pub const NULL_DATAMODEL_LC: &str = "null";
 pub const SCXML_EVENT_PROCESSOR: &str = "http://www.w3.org/TR/scxml/#SCXMLEventProcessor";
 pub const BASIC_HTTP_EVENT_PROCESSOR: &str = "http://www.w3.org/TR/scxml/#BasicHTTPEventProcessor";
 
+pub const EVENT_VARIABLE_NAME: &str = "_event";
+
+
 /// Gets the global data store from a GlobalDataAccess.
 #[macro_export]
 macro_rules! access_global {
@@ -81,8 +84,11 @@ pub trait Datamodel {
     /// Execute an assign expression.
     fn assign(&mut self, fsm: &Fsm, left_expr: &str, right_expr: &str);
 
-    /// Gets a global variable.
-    fn get(&self, name: &str) -> Option<&Data>;
+    /// Gets a global variable by a location expression.\
+    /// If the location is undefined or the location expression is invalid,
+    /// "error.execute" shall be put inside the internal event queue.\
+    /// See [internal_error_execution](Datamodel::internal_error_execution).
+    fn get_by_location(&mut self, location: &str) -> Option<Data>;
 
     /// Get _ioprocessors.
     fn get_io_processors(&mut self) -> &mut HashMap<String, Box<dyn EventIOProcessor>>;
@@ -95,8 +101,11 @@ pub trait Datamodel {
     /// "log" function, use for \<log\> content.
     fn log(&mut self, msg: &str);
 
-    /// Execute a script.
-    fn execute(&mut self, fsm: &Fsm, script: &str) -> String;
+    /// Executes a script.\
+    /// If the script execution fails, "error.execute" shall be put
+    /// inside the internal event queue.
+    /// See [internal_error_execution](Datamodel::internal_error_execution).
+    fn execute(&mut self, fsm: &Fsm, script: &str) -> Option<String>;
 
     fn execute_for_each(&mut self, fsm: &Fsm, array_expression: &str, item: &str, index: &str,
                         execute_body: &mut dyn FnMut(&mut dyn Datamodel));
@@ -196,7 +205,7 @@ impl Datamodel for NullDatamodel {
         // nothing to do
     }
 
-    fn get(self: &NullDatamodel, _name: &str) -> Option<&Data> {
+    fn get_by_location(self: &mut NullDatamodel, _name: &str) -> Option<Data> {
         None
     }
 
@@ -214,8 +223,8 @@ impl Datamodel for NullDatamodel {
         info!("Log: {}", msg);
     }
 
-    fn execute(&mut self, _fsm: &Fsm, _script: &str) -> String {
-        "".to_string()
+    fn execute(&mut self, _fsm: &Fsm, _script: &str) -> Option<String> {
+        None
     }
 
     fn execute_for_each(&mut self, _fsm: &Fsm, _array_expression: &str, _item: &str, _index: &str,

@@ -13,6 +13,8 @@ use boa_engine::{Context, js_string, JsError, JsValue, native_function::NativeFu
 use boa_engine::context::ContextBuilder;
 use boa_engine::JsResult;
 use boa_engine::object::builtins::{JsMap, JsSet};
+use boa_engine::object::ObjectInitializer;
+use boa_engine::property::Attribute;
 use boa_engine::value::Type;
 #[cfg(not(test))]
 use log::{debug, error, info, warn};
@@ -26,6 +28,30 @@ use crate::fsm::{ExecutableContentId, Fsm, GlobalData, State, StateId};
 pub const ECMA_SCRIPT: &str = "ECMAScript";
 pub const ECMA_SCRIPT_LC: &str = "ecmascript";
 pub const FSM_CONFIGURATION: &str = "_fsm_configuration";
+
+/// Name of system event variable for events
+pub const BOA_JSS_EVENT: &str = "_event";
+
+/// Name of field of system event variable "name"
+pub const BOA_JSS_EVENT_NAME: &str = "name";
+
+/// Name of field of system event variable "type"
+pub const BOA_JSS_EVENT_TYPE: &str = "type";
+
+/// Name of field of system event variable "sendid"
+pub const BOA_JSS_EVENT_SEND_ID: &str = "sendid";
+
+/// Name of field of system event variable "origin"
+pub const BOA_JSS_EVENT_ORIGIN: &str = "origin";
+
+/// Name of field of system event variable "origintype"
+pub const BOA_JSS_EVENT_ORIGIN_TYPE: &str = "origintype";
+
+/// Name of field of system event variable "invokeid"
+pub const BOA_JSS_EVENT_INVOKE_ID: &str = "invokeid";
+
+/// Name of field of system event variable "data"
+pub const BOA_JSS_EVENT_DATA: &str = "data";
 
 
 static CONTEXT_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
@@ -77,29 +103,36 @@ impl ECMAScriptDatamodel {
         e
     }
 
-    fn execute_internal(&mut self, _fsm: &Fsm, script: &str) -> String {
-        let mut r: String = "".to_string();
-
+    fn execute_internal(&mut self, script: &str, handle_error: bool) -> Option<String> {
         let result = self.eval(script);
         match result {
             Ok(res) => {
-                match res.to_string(&mut self.context) {
-                    Ok(str) => {
-                        r = str.to_std_string_escaped();
-                        debug!("Execute: {} => {}", script, r);
-                    }
-                    Err(err) => {
-                        warn!("Script Error - failed to convert result to string: {} => {}", script, err);
+                if res.is_undefined() {
+                    debug!("Execute: {} => undefined", script );
+                    None
+                } else {
+                    match res.to_string(&mut self.context) {
+                        Ok(str) => {
+                            let r = str.to_std_string_escaped();
+                            debug!("Execute: {} => {}", script, r);
+                            Some(r)
+                        }
+                        Err(err) => {
+                            warn!("Script Error - failed to convert result to string: {} => {}", script, err);
+                            if handle_error {
+                                self.internal_error_execution();
+                            }
+                            None
+                        }
                     }
                 }
             }
             Err(e) => {
                 // Pretty print the error
                 error!("Script Error: {} => {} ", script, e.to_string());
+                None
             }
         }
-
-        r
     }
 
     fn execute_content(&mut self, fsm: &Fsm, e: &dyn ExecutableContent) {
@@ -217,8 +250,26 @@ impl Datamodel for ECMAScriptDatamodel {
         self.set_js_property(name, js_string!(str_val));
     }
 
-    fn set_event(&mut self, _event: &crate::fsm::Event) {
-        // TODO
+    fn set_event(&mut self, event: &crate::fsm::Event) {
+        let mut data_object_initializer = ObjectInitializer::new(&mut self.context);
+
+        for (key, value) in &event.data {
+            data_object_initializer.property(js_string!(key.clone()), js_string!(value.clone()), Attribute::all());
+        }
+        let data_object = data_object_initializer.build();
+
+
+        let event_object = ObjectInitializer::new(&mut self.context)
+            .property(js_string!(BOA_JSS_EVENT_NAME), js_string!(event.name.clone()), Attribute::all())
+            .property(js_string!(BOA_JSS_EVENT_TYPE), js_string!(event.etype.name().to_string()), Attribute::all())
+            .property(js_string!(BOA_JSS_EVENT_SEND_ID), js_string!(event.sendid.clone()), Attribute::all())
+            .property(js_string!(BOA_JSS_EVENT_ORIGIN), js_string!(event.origin.clone()), Attribute::all())
+            .property(js_string!(BOA_JSS_EVENT_ORIGIN_TYPE), js_string!(event.origin_type.clone()), Attribute::all())
+            .property(js_string!(BOA_JSS_EVENT_INVOKE_ID), event.invoke_id, Attribute::all())
+            .property(js_string!(BOA_JSS_EVENT_DATA), data_object, Attribute::all())
+            .build();
+
+        _ = self.context.global_object().set(js_string!(BOA_JSS_EVENT), event_object, false, &mut self.context);
     }
 
     fn assign(self: &mut ECMAScriptDatamodel, _fsm: &Fsm, left_expr: &str, right_expr: &str) {
@@ -226,13 +277,14 @@ impl Datamodel for ECMAScriptDatamodel {
         let _ = self.eval(exp.as_str());
     }
 
-    fn get(self: &ECMAScriptDatamodel, name: &str) -> Option<&Data> {
-        match self.data.get(name) {
-            Some(data) => {
-                Some(&**data)
-            }
+    fn get_by_location(self: &mut ECMAScriptDatamodel, location: &str) -> Option<Data> {
+        match self.execute_internal(location, false) {
             None => {
+                self.internal_error_execution();
                 None
+            }
+            Some(val) => {
+                Some(Data::new_moved(val))
             }
         }
     }
@@ -259,8 +311,8 @@ impl Datamodel for ECMAScriptDatamodel {
         info!("Log: {}", msg);
     }
 
-    fn execute(&mut self, fsm: &Fsm, script: &str) -> String {
-        self.execute_internal(fsm, script)
+    fn execute(&mut self, _fsm: &Fsm, script: &str) -> Option<String> {
+        self.execute_internal(script, true)
     }
 
     fn execute_for_each(&mut self, _fsm: &Fsm, array_expression: &str, item_name: &str, index: &str,
@@ -320,16 +372,20 @@ impl Datamodel for ECMAScriptDatamodel {
     }
 
 
-    fn execute_condition(&mut self, fsm: &Fsm, script: &str) -> Result<bool, String> {
+    fn execute_condition(&mut self, _fsm: &Fsm, script: &str) -> Result<bool, String> {
         // W3C:
         // B.2.3 Conditional Expressions
         //   The Processor must convert ECMAScript expressions used in conditional expressions into their effective boolean value using the ToBoolean operator
         //   as described in Section 9.2 of [ECMASCRIPT-262].
         let to_boolean_expression = format!("({})?true:false", script);
-        let r = self.execute_internal(fsm, to_boolean_expression.as_str());
-        match bool::from_str(r.as_str()) {
-            Ok(v) => Ok(v),
-            Err(e) => Err(e.to_string()),
+        match self.execute_internal(to_boolean_expression.as_str(), false) {
+            Some(val) => {
+                match bool::from_str(val.as_str()) {
+                    Ok(v) => Ok(v),
+                    Err(e) => Err(e.to_string()),
+                }
+            }
+            None => Err("undefined".to_string())
         }
     }
 

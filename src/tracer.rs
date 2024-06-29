@@ -185,25 +185,25 @@ pub trait Tracer: Send + Debug {
     /// Called by FSM for input arguments in methods.
     fn trace_argument(&self, what: &str, d: &dyn Display) {
         if self.is_trace(TraceMode::ARGUMENTS) {
-            self.trace(format!("In:{}:{}", what, d).as_str());
+            self.trace(format!("Argument:{}={}", what, d).as_str());
         }
     }
 
     /// Called by FSM for results in methods.
     fn trace_result(&self, what: &str, d: &dyn Display) {
         if self.is_trace(TraceMode::RESULTS) {
-            self.trace(format!("Out:{}:{}", what, d).as_str());
+            self.trace(format!("Result:{}={}", what, d).as_str());
         }
     }
 
     /// Helper method to trace a vector of ids.
     fn trace_id_vec(&self, what: &str, l: &Vec<u32>) {
-        self.trace(format!("{}: {}", what, fsm::vec_to_string(&l)).as_str());
+        self.trace(format!("{}=[{}]", what, fsm::vec_to_string(&l)).as_str());
     }
 
     /// Helper method to trace a OrderedSet of ids.
     fn trace_id_set(&self, what: &str, l: &OrderedSet<u32>) {
-        self.trace(format!("{}: {}", what, fsm::vec_to_string(&l.data)).as_str());
+        self.trace(format!("{}=({})", what, fsm::vec_to_string(&l.data)).as_str());
     }
 }
 

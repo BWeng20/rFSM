@@ -492,7 +492,17 @@ pub enum EventType {
     internal,
     /// for all other events
     external,
+}
 
+impl EventType {
+    pub fn name(&self) -> &'static str {
+        match self
+        {
+            EventType::platform => { "platform" }
+            EventType::internal => { "internal" }
+            EventType::external => { "external" }
+        }
+    }
 }
 
 /// #W3c says:
@@ -517,7 +527,7 @@ pub struct Event {
     pub origin: String,
     pub origin_type: String,
     pub invoke_id: InvokeId,
-    pub data: HashMap<String,String>,
+    pub data: HashMap<String, String>,
 }
 
 impl ToString for Event {
@@ -527,7 +537,7 @@ impl ToString for Event {
 }
 
 impl Event {
-    pub fn new(prefix: &str, id: &String, ev_data: &Option<HashMap<String,String>>) -> Event {
+    pub fn new(prefix: &str, id: &String, ev_data: &Option<HashMap<String, String>>) -> Event {
         Event {
             name: format!("{}{}", prefix, id),
             etype: EventType::external,
@@ -2207,12 +2217,20 @@ impl Fsm {
 
     fn invoke(&mut self, datamodel: &mut dyn Datamodel, inv: &Invoke) {
         // We need a "invoke" concept!
-        let type_name: String;
-        if inv.type_expr.is_empty() {
-            type_name = inv.type_name.clone();
-        } else {
-            type_name = datamodel.execute(self, inv.type_expr.as_str());
-        }
+        let type_name =
+            if inv.type_expr.is_empty() {
+                inv.type_name.clone()
+            } else {
+                match datamodel.execute(self, inv.type_expr.as_str()) {
+                    None => {
+                        // Error -> Abort
+                        return;
+                    }
+                    Some(value) => {
+                        value
+                    }
+                }
+            };
         let id: String;
         if inv.external_id.is_empty() {
             // Generate
@@ -2220,16 +2238,24 @@ impl Fsm {
         } else {
             id = inv.external_id.clone();
         }
-        let src: String;
-        if inv.src_expr.is_empty() {
-            // Generate
-            src = inv.src.clone();
-        } else {
-            src = datamodel.execute(self, inv.src_expr.as_str());
-        }
+        let src =
+            if inv.src_expr.is_empty() {
+                // Generate
+                inv.src.clone()
+            } else {
+                match datamodel.execute(self, inv.src_expr.as_str()) {
+                    None => {
+                        // Error -> Abort
+                        return;
+                    }
+                    Some(value) => {
+                        value
+                    }
+                }
+            };
         let mut name_values: HashMap<String, String> = HashMap::new();
         for name in inv.name_list.as_slice() {
-            match datamodel.get(name) {
+            match datamodel.get_by_location(name) {
                 None => {}
                 Some(value) => {
                     name_values.insert(name.clone(), value.to_string());
@@ -2292,7 +2318,7 @@ impl Fsm {
                 match datamodel.execute_condition(self, &c) {
                     Ok(v) => v,
                     Err(_e) => {
-                        self.enqueue_internal(datamodel, Event::error("execution"));
+                        datamodel.internal_error_execution();
                         false
                     }
                 }
@@ -2675,6 +2701,7 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
     use std::sync::mpsc::Sender;
+
     use hyper::ext::HashMap;
 
     use crate::{Event, EventType, fsm, fsm_executor, reader};
