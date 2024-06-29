@@ -16,11 +16,11 @@
 | test173.txml.scxml   | OK       |
 | test174.txml.scxml   | OK       |
 | test175.txml.scxml   | OK       |
-| test176.txml.scxml   | _Failed_ |
+| test176.txml.scxml   | OK       |
 | test179.txml.scxml   | OK       |
 | test183.txml.scxml   | OK       |
 | test185.txml.scxml   | OK       |
-| test186.txml.scxml   | _Failed_ |
+| test186.txml.scxml   | OK       |
 | test187.txml.scxml   | OK       |
 | test189.txml.scxml   | OK       |
 | test190.txml.scxml   | OK       |
@@ -30,7 +30,7 @@
 | test198.txml.scxml   | OK       |
 | test199.txml.scxml   | OK       |
 | test200.txml.scxml   | OK       |
-| test205.txml.scxml   | _Failed_ |
+| test205.txml.scxml   | OK       |
 | test207.txml.scxml   | OK       |
 | test208.txml.scxml   | OK       |
 | test210.txml.scxml   | OK       |
@@ -102,7 +102,7 @@
 | test350.txml.scxml   | OK       |
 | test351.txml.scxml   | OK       |
 | test352.txml.scxml   | OK       |
-| test354.txml.scxml   | _Failed_ |
+| test354.txml.scxml   | OK       |
 | test355.txml.scxml   | _Failed_ |
 | test364.txml.scxml   | _Failed_ |
 | test372.txml.scxml   | _Failed_ |
@@ -160,4 +160,4 @@
 | test576.txml.scxml   | OK       |
 | test579.txml.scxml   | OK       |
 | test580.txml.scxml   | OK       |
-__Result__: 130 of 160 tests succeeded
+__Result__: 134 of 160 tests succeeded
