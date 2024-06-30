@@ -19,7 +19,7 @@ use quick_xml::Reader;
 
 use crate::datamodel::Data;
 use crate::executable_content::{Assign, ExecutableContent, Expression, ForEach, get_opt_executable_content_as, get_safe_executable_content_as, If, Log, parse_duration_to_milliseconds, Raise, TARGET_SCXML_EVENT_PROCESSOR};
-use crate::fsm::{BindingType, Cancel, SendParameters, Parameter, DoneData, ExecutableContentId, Fsm, HistoryType, ID_COUNTER, Invoke, map_history_type, map_transition_type, State, StateId, Transition, TransitionId, TransitionType};
+use crate::fsm::{BindingType, Cancel, DoneData, ExecutableContentId, Fsm, HistoryType, ID_COUNTER, Invoke, map_history_type, map_transition_type, Parameter, SendParameters, State, StateId, Transition, TransitionId, TransitionType};
 use crate::fsm::vec_to_string;
 
 pub type AttributeMap = HashMap<String, String>;

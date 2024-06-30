@@ -2,14 +2,32 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::mpsc::Sender;
 
+use log::info;
+
 use crate::datamodel::{Datamodel, ToAny};
-use crate::fsm::{Event, Fsm};
+use crate::fsm::{Event, EVENT_CANCEL_SESSION, Fsm};
 
 pub const SYS_IO_PROCESSORS: &str = "_ioprocessors";
 
+#[derive(Debug, Clone)]
 pub struct EventIOProcessorHandle {
     /// The FSMs that are connected to this IO Processor
     pub fsms: HashMap<u32, Sender<Box<Event>>>,
+}
+
+impl EventIOProcessorHandle {
+    pub fn new() -> EventIOProcessorHandle {
+        EventIOProcessorHandle {
+            fsms: HashMap::new()
+        }
+    }
+    pub fn shutdown(&mut self) {
+        let cancel_event = Event::new_simple(EVENT_CANCEL_SESSION);
+        for (id, sender) in &self.fsms {
+            info!("Send cancel to fsm #{}", id);
+            let _ = sender.send(cancel_event.get_copy());
+        }
+    }
 }
 
 /// Trait for Event I/O Processors. \

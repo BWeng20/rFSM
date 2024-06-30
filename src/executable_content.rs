@@ -148,8 +148,8 @@ impl Debug for Assign {
 }
 
 impl ExecutableContent for Assign {
-    fn execute(&self, datamodel: &mut dyn Datamodel, fsm: &Fsm) {
-        datamodel.assign(fsm, &self.location.as_str(), &self.expr);
+    fn execute(&self, datamodel: &mut dyn Datamodel, _fsm: &Fsm) {
+        datamodel.assign(&self.location.as_str(), &self.expr);
     }
 
     fn get_type(&self) -> &str {
@@ -227,8 +227,8 @@ impl Expression {
 }
 
 impl ExecutableContent for Expression {
-    fn execute(&self, datamodel: &mut dyn Datamodel, fsm: &Fsm) {
-        let _l = datamodel.execute(fsm, &self.content);
+    fn execute(&self, datamodel: &mut dyn Datamodel, _fsm: &Fsm) {
+        let _l = datamodel.execute(&self.content);
     }
 
     fn get_type(&self) -> &str {
@@ -250,8 +250,8 @@ impl Log {
 }
 
 impl ExecutableContent for Log {
-    fn execute(&self, datamodel: &mut dyn Datamodel, fsm: &Fsm) {
-        let l = datamodel.execute(fsm, &self.expression);
+    fn execute(&self, datamodel: &mut dyn Datamodel, _fsm: &Fsm) {
+        let l = datamodel.execute(&self.expression);
         if l.is_some() {
             datamodel.log(&l.unwrap());
         }
@@ -279,7 +279,7 @@ impl If {
 
 impl ExecutableContent for If {
     fn execute(&self, datamodel: &mut dyn Datamodel, fsm: &Fsm) {
-        match datamodel.execute_condition(fsm, &self.condition) {
+        match datamodel.execute_condition(&self.condition) {
             Ok(r) => {
                 if r {
                     if self.content != 0 {
@@ -335,7 +335,7 @@ impl ExecutableContent for ForEach {
         } else {
             self.index.clone()
         };
-        datamodel.execute_for_each(fsm, &self.array, &self.item, &idx, &mut |datamodel| {
+        datamodel.execute_for_each(&self.array, &self.item, &idx, &mut |datamodel| {
             if self.content != 0 {
                 for e in fsm.executableContent.get(&self.content).unwrap() {
                     e.execute(datamodel, fsm);
@@ -396,46 +396,30 @@ impl ExecutableContent for SendParameters {
     /// If unable to dispatch, place "error.communication" in internal queue
     /// If target is not supported, place "error.execution" in internal queue
     fn execute(&self, datamodel: &mut dyn Datamodel, fsm: &Fsm) {
-        let target =
-            if self.target.is_empty()
-            {
-                if !self.target_expr.is_empty() {
-                    match datamodel.execute(fsm, &self.target_expr) {
-                        None => {
-                            // Error -> abort
-                            return;
-                        }
-                        Some(value) => {
-                            value
-                        }
-                    }
-                } else {
-                    // TODO: Clarify. Missing target -> abort or ignore?
-                    datamodel.internal_error_execution();
-                    return;
-                }
-            } else {
-                self.target.clone()
-            };
+        let target = match datamodel.get_expression_alternative_value(&self.target, &self.target_expr) {
+            Ok(value) => {
+                value
+            }
+            Err(_) => {
+                // Error -> abort
+                return;
+            }
+        };
+        if target.is_empty() {
+            // TODO: Clarify. Missing target -> abort or ignore?
+            datamodel.internal_error_execution();
+            return;
+        }
 
         let event_name =
-            if self.event.is_empty()
-            {
-                if !self.event_expr.is_empty() {
-                    match datamodel.execute(fsm, &self.event_expr) {
-                        None => {
-                            // Error -> abort
-                            return;
-                        }
-                        Some(name) => {
-                            name
-                        }
-                    }
-                } else {
-                    "".to_string()
+            match datamodel.get_expression_alternative_value(&self.event, &self.event_expr) {
+                Ok(value) => {
+                    value
                 }
-            } else {
-                self.event.clone()
+                Err(_) => {
+                    // Error -> abort
+                    return;
+                }
             };
 
         let send_id =
@@ -457,7 +441,7 @@ impl ExecutableContent for SendParameters {
 
         for param in &self.params {
             if !param.expr.is_empty() {
-                match datamodel.execute(fsm, &param.expr) {
+                match datamodel.execute(&param.expr) {
                     None => {
                         //  W3C:\
                         // ...if the evaluation of the 'expr' produces an error, the SCXML
@@ -488,7 +472,7 @@ impl ExecutableContent for SendParameters {
 
         let delay_ms =
             if !self.delay_expr.is_empty() {
-                match datamodel.execute(fsm, &self.delay_expr) {
+                match datamodel.execute(&self.delay_expr) {
                     None => {
                         // Error -> Abort
                         return;

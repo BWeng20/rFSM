@@ -126,4 +126,8 @@ impl Tracer for TestTracer {
         guard.remove(s.name.as_str());
         self.default_tracer.trace_exit_state(s);
     }
+
+    fn trace_mode(&self) -> TraceMode {
+        self.default_tracer.trace_mode()
+    }
 }

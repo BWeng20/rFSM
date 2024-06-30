@@ -36,17 +36,17 @@ pub const SCXML_EVENT_NAME: &str = "_scxmleventname";
 pub struct BasicHTTPEventIOProcessor {
     pub terminate_flag: Arc<AtomicBool>,
     pub state: Arc<Mutex<BasicHTTPEventIOProcessorServerData>>,
+    pub handle: EventIOProcessorHandle,
 }
 
 #[derive(Debug, Clone)]
 pub struct BasicHTTPEventIOProcessorServerData {
     pub location: String,
     pub local_adr: SocketAddr,
-    pub fsms: HashMap<String, EventSender>,
 }
 
 /// The parsed payload of a http request
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 struct Message {
     pub event: String,
     pub session: String,
@@ -219,7 +219,7 @@ impl BasicHTTPEventIOProcessor {
                     tokio::task::spawn(async move {
                         let tx2 = tx1.clone();
                         let builder = http1::Builder::new();
-                        let conn = builder.serve_connection(io, service_fn(move |request|  {
+                        let conn = builder.serve_connection(io, service_fn(move |request| {
                             handle_request(request, tx2.clone())
                         }));
 
@@ -240,12 +240,12 @@ impl BasicHTTPEventIOProcessor {
         let state = BasicHTTPEventIOProcessorServerData {
             location: format!("https://{}:{}", location_name, port),
             local_adr: addr,
-            fsms: HashMap::new(),
         };
         let e = BasicHTTPEventIOProcessor
         {
             terminate_flag: terminate_flag,
             state: Arc::new(Mutex::new(state)),
+            handle: EventIOProcessorHandle::new(),
         };
         e
     }
@@ -262,13 +262,14 @@ impl EventIOProcessor for BasicHTTPEventIOProcessor {
     fn get_types(&self) -> &[&str] { TYPES }
 
     fn get_handle(&mut self) -> &mut EventIOProcessorHandle {
-        todo!()
+        &mut self.handle
     }
 
     fn get_copy(&self) -> Box<dyn EventIOProcessor> {
         let b = BasicHTTPEventIOProcessor {
             terminate_flag: self.terminate_flag.clone(),
             state: self.state.clone(),
+            handle: self.handle.clone(),
         };
         Box::new(b)
     }
@@ -277,5 +278,6 @@ impl EventIOProcessor for BasicHTTPEventIOProcessor {
         info!("HTTP Event IO Processor shutdown...");
         self.terminate_flag.as_ref().store(true, Ordering::Relaxed);
         let _ = TcpStream::connect(self.state.lock().unwrap().local_adr);
+        self.handle.shutdown();
     }
 }

@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::PathBuf;
 use std::process;
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc::Sender;
 
 #[cfg(not(test))]
 use log::{error, info};
@@ -14,8 +14,8 @@ use serde::Deserialize;
 use yaml_rust::YamlLoader;
 
 use crate::{fsm, reader};
-use crate::fsm::Fsm;
-use crate::fsm_executor::ExecuterState;
+use crate::fsm::{Event, Fsm};
+use crate::fsm_executor::FsmExecutor;
 use crate::test_tracer::{abort_test, TestTracer};
 use crate::tracer::{TraceMode, Tracer};
 
@@ -25,7 +25,7 @@ pub struct EventSpecification {
     /// Mandatory event name to send.
     name: String,
 
-    /// Delay in milliseconds after the event was send.
+    /// Delay in milliseconds after the event was sent.
     delay_ms: i32,
 
     /// Optional state to reach after the event\
@@ -120,20 +120,28 @@ pub fn run_test(test: TestUseCase) {
     process::exit(0);
 }
 
-pub fn run_test_manual(test_name: &str, mut fsm: Box<Fsm>, trace_mode: TraceMode, timeout: u64, expected_final_configuration: &Vec<String>) -> bool
+pub fn run_test_manual(test_name: &str, fsm: Box<Fsm>, trace_mode: TraceMode, timeout: u64, expected_final_configuration: &Vec<String>) -> bool
+{
+    run_test_manual_with_send(test_name, fsm, trace_mode, timeout, expected_final_configuration, move |_sender| {})
+}
+
+pub fn run_test_manual_with_send(test_name: &str, mut fsm: Box<Fsm>, trace_mode: TraceMode, timeout: u64, expected_final_configuration: &Vec<String>, mut cb: impl FnMut(Sender<Box<Event>>)) -> bool
 {
     let mut tracer = Box::new(TestTracer::new());
     tracer.enable_trace(trace_mode);
     let current_config = tracer.get_fsm_config();
     fsm.tracer = tracer;
 
-    let state = Arc::new(Mutex::new(ExecuterState::new()));
-    let (thread_join, _sender) = fsm::start_fsm(fsm, &state);
+    fsm.executer = Some(Box::new(FsmExecutor::new_without_io_processor()));
+    let (thread_join, sender) = fsm::start_fsm(fsm);
 
     let mut watchdog_sender: Option<Box<std::sync::mpsc::Sender<String>>> = None;
     if timeout > 0 {
-        watchdog_sender = Some(TestTracer::start_watchdog(test_name, timeout as u64));
+        watchdog_sender = Some(TestTracer::start_watchdog(test_name, timeout));
     }
+
+    // Sending some event
+    cb(sender);
 
     info!("FSM started. Waiting to terminate...");
     let _ = thread_join.join();

@@ -20,7 +20,7 @@ use boa_engine::value::Type;
 use log::{debug, error, info, warn};
 
 use crate::access_global;
-use crate::datamodel::{Data, Datamodel, DataStore, GlobalDataAccess};
+use crate::datamodel::{Data, Datamodel, DataStore, EVENT_VARIABLE_FIELD_DATA, EVENT_VARIABLE_FIELD_INVOKE_ID, EVENT_VARIABLE_FIELD_NAME, EVENT_VARIABLE_FIELD_ORIGIN, EVENT_VARIABLE_FIELD_ORIGIN_TYPE, EVENT_VARIABLE_FIELD_SEND_ID, EVENT_VARIABLE_FIELD_TYPE, EVENT_VARIABLE_NAME, GlobalDataAccess};
 use crate::event_io_processor::{EventIOProcessor, SYS_IO_PROCESSORS};
 use crate::executable_content::{DefaultExecutableContentTracer, ExecutableContent, ExecutableContentTracer};
 use crate::fsm::{ExecutableContentId, Fsm, GlobalData, State, StateId};
@@ -28,31 +28,6 @@ use crate::fsm::{ExecutableContentId, Fsm, GlobalData, State, StateId};
 pub const ECMA_SCRIPT: &str = "ECMAScript";
 pub const ECMA_SCRIPT_LC: &str = "ecmascript";
 pub const FSM_CONFIGURATION: &str = "_fsm_configuration";
-
-/// Name of system event variable for events
-pub const BOA_JSS_EVENT: &str = "_event";
-
-/// Name of field of system event variable "name"
-pub const BOA_JSS_EVENT_NAME: &str = "name";
-
-/// Name of field of system event variable "type"
-pub const BOA_JSS_EVENT_TYPE: &str = "type";
-
-/// Name of field of system event variable "sendid"
-pub const BOA_JSS_EVENT_SEND_ID: &str = "sendid";
-
-/// Name of field of system event variable "origin"
-pub const BOA_JSS_EVENT_ORIGIN: &str = "origin";
-
-/// Name of field of system event variable "origintype"
-pub const BOA_JSS_EVENT_ORIGIN_TYPE: &str = "origintype";
-
-/// Name of field of system event variable "invokeid"
-pub const BOA_JSS_EVENT_INVOKE_ID: &str = "invokeid";
-
-/// Name of field of system event variable "data"
-pub const BOA_JSS_EVENT_DATA: &str = "data";
-
 
 static CONTEXT_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
@@ -260,19 +235,19 @@ impl Datamodel for ECMAScriptDatamodel {
 
 
         let event_object = ObjectInitializer::new(&mut self.context)
-            .property(js_string!(BOA_JSS_EVENT_NAME), js_string!(event.name.clone()), Attribute::all())
-            .property(js_string!(BOA_JSS_EVENT_TYPE), js_string!(event.etype.name().to_string()), Attribute::all())
-            .property(js_string!(BOA_JSS_EVENT_SEND_ID), js_string!(event.sendid.clone()), Attribute::all())
-            .property(js_string!(BOA_JSS_EVENT_ORIGIN), js_string!(event.origin.clone()), Attribute::all())
-            .property(js_string!(BOA_JSS_EVENT_ORIGIN_TYPE), js_string!(event.origin_type.clone()), Attribute::all())
-            .property(js_string!(BOA_JSS_EVENT_INVOKE_ID), event.invoke_id, Attribute::all())
-            .property(js_string!(BOA_JSS_EVENT_DATA), data_object, Attribute::all())
+            .property(js_string!(EVENT_VARIABLE_FIELD_NAME), js_string!(event.name.clone()), Attribute::all())
+            .property(js_string!(EVENT_VARIABLE_FIELD_TYPE), js_string!(event.etype.name().to_string()), Attribute::all())
+            .property(js_string!(EVENT_VARIABLE_FIELD_SEND_ID), js_string!(event.sendid.clone()), Attribute::all())
+            .property(js_string!(EVENT_VARIABLE_FIELD_ORIGIN), js_string!(event.origin.clone()), Attribute::all())
+            .property(js_string!(EVENT_VARIABLE_FIELD_ORIGIN_TYPE), js_string!(event.origin_type.clone()), Attribute::all())
+            .property(js_string!(EVENT_VARIABLE_FIELD_INVOKE_ID), event.invoke_id, Attribute::all())
+            .property(js_string!(EVENT_VARIABLE_FIELD_DATA), data_object, Attribute::all())
             .build();
 
-        _ = self.context.global_object().set(js_string!(BOA_JSS_EVENT), event_object, false, &mut self.context);
+        _ = self.context.global_object().set(js_string!(EVENT_VARIABLE_NAME), event_object, false, &mut self.context);
     }
 
-    fn assign(self: &mut ECMAScriptDatamodel, _fsm: &Fsm, left_expr: &str, right_expr: &str) {
+    fn assign(self: &mut ECMAScriptDatamodel, left_expr: &str, right_expr: &str) {
         let exp = format!("{}={}", left_expr, right_expr);
         let _ = self.eval(exp.as_str());
     }
@@ -311,11 +286,11 @@ impl Datamodel for ECMAScriptDatamodel {
         info!("Log: {}", msg);
     }
 
-    fn execute(&mut self, _fsm: &Fsm, script: &str) -> Option<String> {
+    fn execute(&mut self, script: &str) -> Option<String> {
         self.execute_internal(script, true)
     }
 
-    fn execute_for_each(&mut self, _fsm: &Fsm, array_expression: &str, item_name: &str, index: &str,
+    fn execute_for_each(&mut self, array_expression: &str, item_name: &str, index: &str,
                         execute_body: &mut dyn FnMut(&mut dyn Datamodel)) {
         debug!("ForEach: array: {}", array_expression );
         self.update_global_data();
@@ -372,7 +347,7 @@ impl Datamodel for ECMAScriptDatamodel {
     }
 
 
-    fn execute_condition(&mut self, _fsm: &Fsm, script: &str) -> Result<bool, String> {
+    fn execute_condition(&mut self, script: &str) -> Result<bool, String> {
         // W3C:
         // B.2.3 Conditional Expressions
         //   The Processor must convert ECMAScript expressions used in conditional expressions into their effective boolean value using the ToBoolean operator

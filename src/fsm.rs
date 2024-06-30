@@ -21,26 +21,32 @@ use std::thread::JoinHandle;
 #[cfg(not(test))]
 use log::{debug, error, info};
 
-use crate::datamodel::{Data, Datamodel, DataStore, NULL_DATAMODEL, NULL_DATAMODEL_LC, NullDatamodel};
+use crate::datamodel::{Data, Datamodel, DataStore, NULL_DATAMODEL, NULL_DATAMODEL_LC, NullDatamodel, SCXML_TYPE};
 #[cfg(feature = "ECMAScript")]
 use crate::ecma_script_datamodel::{ECMA_SCRIPT_LC, ECMAScriptDatamodel};
 use crate::event_io_processor::EventIOProcessor;
-use crate::executable_content::{ExecutableContent};
-use crate::fsm_executor::ExecuterState;
+use crate::executable_content::ExecutableContent;
+use crate::fsm_executor::FsmExecutor;
 use crate::get_global;
 use crate::tracer::{DefaultTracer, TraceMode, Tracer};
 
+/// Platform specific event to cancel the current session.
+pub const EVENT_CANCEL_SESSION: &str = "error.platform.cancel";
+
 /// Starts the FSM inside a worker thread.
 ///
-pub fn start_fsm(mut sm: Box<Fsm>, executor_state: &Arc<Mutex<ExecuterState>>) -> (JoinHandle<()>, Sender<Box<Event>>) {
+pub fn start_fsm(mut sm: Box<Fsm>) -> (JoinHandle<()>, Sender<Box<Event>>) {
     #![allow(non_snake_case)]
     let externalQueue: BlockingQueue<Box<Event>> = BlockingQueue::new();
     let sender = externalQueue.sender.clone();
 
     let mut vt: Vec<Box<dyn EventIOProcessor>> = Vec::new();
-    let guard = executor_state.lock().unwrap();
-    for p in &guard.processors {
-        vt.push(p.get_copy());
+    {
+        let executer_state = &sm.executer.as_ref().unwrap().state;
+        let guard = executer_state.lock().unwrap();
+        for p in &guard.processors {
+            vt.push(p.get_copy());
+        }
     }
 
     let thread = thread::Builder::new().name("fsm_interpret".to_string()).spawn(
@@ -537,6 +543,18 @@ impl ToString for Event {
 }
 
 impl Event {
+    pub fn new_simple(name: &str) -> Event {
+        Event {
+            name: name.to_string(),
+            etype: EventType::external,
+            sendid: "".to_string(),
+            origin: "".to_string(),
+            data: HashMap::new(),
+            invoke_id: 0,
+            origin_type: "".to_string(),
+        }
+    }
+
     pub fn new(prefix: &str, id: &String, ev_data: &Option<HashMap<String, String>>) -> Event {
         Event {
             name: format!("{}{}", prefix, id),
@@ -835,6 +853,7 @@ impl GlobalData {
 /// The FSM implementation, according to W3C proposal.
 #[allow(non_snake_case)]
 pub struct Fsm {
+    pub executer: Option<Box<FsmExecutor>>,
     pub tracer: Box<dyn Tracer>,
     pub datamodel: String,
 
@@ -914,6 +933,7 @@ fn display_transition_map(sm: &TransitionMap, f: &mut Formatter<'_>) -> fmt::Res
 impl Fsm {
     pub fn new() -> Fsm {
         Fsm {
+            executer: Option::None,
             datamodel: NULL_DATAMODEL.to_string(),
             states: Vec::new(),
             transitions: HashMap::new(),
@@ -2287,10 +2307,8 @@ impl Fsm {
     fn isCancelEvent(&self, ev: &Event) -> bool {
         // Cancel-Events (outer fsm cancels a fsm instance that was started by some invoke)
         // are platform specific.
-        // TODO: we need a "invoke" concept!
-        ev.name.ends_with(".cancel")
+        ev.name.eq(EVENT_CANCEL_SESSION)
     }
-
 
     /// #W3C says:
     /// function getChildStates(state1)
@@ -2306,21 +2324,28 @@ impl Fsm {
     }
 
     fn invoke(&mut self, datamodel: &mut dyn Datamodel, inv: &Invoke) {
-        // We need a "invoke" concept!
-        let type_name =
-            if inv.type_expr.is_empty() {
-                inv.type_name.clone()
-            } else {
-                match datamodel.execute(self, inv.type_expr.as_str()) {
-                    None => {
-                        // Error -> Abort
-                        return;
-                    }
-                    Some(value) => {
-                        value
-                    }
-                }
-            };
+        // W3C: if the evaluation of its arguments produces an error, the SCXML Processor must
+        // terminate the processing of the element without further action.
+
+        let mut type_name = match datamodel.get_expression_alternative_value(&inv.type_name, &inv.type_expr) {
+            Ok(value) => {
+                value
+            }
+            Err(_) => {
+                // Error -> abort
+                return;
+            }
+        };
+
+        if type_name.eq("scxml") {
+            type_name = SCXML_TYPE.to_string();
+        }
+
+        if (!type_name.is_empty()) && type_name.ne(SCXML_TYPE) {
+            error!("Unsupported <invoke> type {}", type_name);
+            return;
+        }
+
         let id: String;
         if inv.external_id.is_empty() {
             // Generate
@@ -2328,21 +2353,15 @@ impl Fsm {
         } else {
             id = inv.external_id.clone();
         }
-        let src =
-            if inv.src_expr.is_empty() {
-                // Generate
-                inv.src.clone()
-            } else {
-                match datamodel.execute(self, inv.src_expr.as_str()) {
-                    None => {
-                        // Error -> Abort
-                        return;
-                    }
-                    Some(value) => {
-                        value
-                    }
-                }
-            };
+        let src = match datamodel.get_expression_alternative_value(&inv.src, &inv.src_expr) {
+            Err(_) => {
+                // Error -> Abort
+                return;
+            }
+            Ok(value) => {
+                value
+            }
+        };
         let mut name_values: HashMap<String, String> = HashMap::new();
         for name in inv.name_list.as_slice() {
             match datamodel.get_by_location(name) {
@@ -2360,6 +2379,9 @@ impl Fsm {
             // If "idlocation" is specified, we have to store the generated id to this location
             datamodel.set(inv.external_id_location.as_str(), Box::new(Data::new_moved(id)));
         }
+
+        let _ = self.executer.as_mut().unwrap().execute(src.as_str(), self.tracer.trace_mode());
+
         todo!()
     }
 
@@ -2405,7 +2427,7 @@ impl Fsm {
         }
         match cond {
             Some(c) => {
-                match datamodel.execute_condition(self, &c) {
+                match datamodel.execute_condition(&c.as_str()) {
                     Ok(v) => v,
                     Err(_e) => {
                         datamodel.internal_error_execution();
@@ -2792,16 +2814,13 @@ pub(crate) fn vec_to_string<T: Display>(v: &Vec<T>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::{thread, time};
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
     use std::sync::mpsc::Sender;
 
-    use hyper::ext::HashMap;
-
-    use crate::{Event, EventType, fsm, fsm_executor, reader};
+    use crate::{Event, EventType, reader};
     use crate::fsm::List;
     use crate::fsm::OrderedSet;
+    use crate::test::run_test_manual_with_send;
     use crate::tracer::TraceMode;
 
     fn test_send(sender: &Sender<Box<Event>>, e: Event)
@@ -3141,23 +3160,15 @@ mod tests {
         assert!(!sm.is_err(), "FSM shall be parsed");
 
         let mut fsm = sm.unwrap();
-        fsm.tracer.enable_trace(TraceMode::ALL);
 
-        let state = Arc::new(Mutex::new(fsm_executor::ExecuterState::new()));
+        let mut expected_config = Vec::new();
+        expected_config.push("OuterFinal".to_string());
 
-        let (thread_handle, sender) = fsm::start_fsm(fsm, &state);
-
-        let t_millis = time::Duration::from_millis(1000);
-        thread::sleep(t_millis);
-
-        println!("Send Event");
-
-        let empty_str = "".to_string();
-
-        test_send(&sender, Event { name: "ab".to_string(), etype: EventType::platform, sendid: "0".to_string(), origin: empty_str.clone(), origin_type: empty_str.clone(), invoke_id: 1, data: HashMap::new() });
-        test_send(&sender, Event { name: "exit".to_string(), etype: EventType::platform, sendid: "0".to_string(), origin: empty_str.clone(), origin_type: empty_str.clone(), invoke_id: 2, data: HashMap::new() });
-
-        // TODO: How to check for timeouts??
-        let _r = thread_handle.join();
+        assert!(run_test_manual_with_send("fsm_shall_exit", fsm, TraceMode::ALL, 2000, &expected_config, |sender| {
+            println!("Send Event");
+            let empty_str = "".to_string();
+            test_send(&sender, Event { name: "ab".to_string(), etype: EventType::platform, sendid: "0".to_string(), origin: empty_str.clone(), origin_type: empty_str.clone(), invoke_id: 1, data: HashMap::new() });
+            test_send(&sender, Event { name: "exit".to_string(), etype: EventType::platform, sendid: "0".to_string(), origin: empty_str.clone(), origin_type: empty_str.clone(), invoke_id: 2, data: HashMap::new() });
+        }), "FSM shall terminate with state 'OuterFinal'");
     }
 }

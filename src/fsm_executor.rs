@@ -36,6 +36,7 @@ impl ExecuterState {
 
 /// Executed FSM in separate threads.
 /// This class maintains IO Processors used by the FSMs.
+#[derive(Clone)]
 pub struct FsmExecutor {
     pub state: Arc<Mutex<ExecuterState>>,
     pub include_paths: Vec<PathBuf>,
@@ -65,7 +66,16 @@ impl FsmExecutor {
         self.state.lock().unwrap().processors.push(processor);
     }
 
-    pub async fn new() -> FsmExecutor {
+    pub fn new_without_io_processor() -> FsmExecutor {
+        let mut e = FsmExecutor {
+            state: Arc::new(Mutex::new(ExecuterState::new())),
+            include_paths: Vec::new(),
+        };
+        e.add_processor(Box::new(ScxmlEventIOProcessor::new()));
+        e
+    }
+
+    pub async fn new_with_io_processor() -> FsmExecutor {
         let mut e = FsmExecutor {
             state: Arc::new(Mutex::new(ExecuterState::new())),
             include_paths: Vec::new(),
@@ -113,7 +123,8 @@ impl FsmExecutor {
         match sm {
             Ok(mut fsm) => {
                 fsm.tracer.enable_trace(trace);
-                let th = fsm::start_fsm(fsm, &self.state);
+                fsm.executer = Some(Box::new(self.clone()));
+                let th = fsm::start_fsm(fsm);
                 Ok(th)
             }
             Err(message) => { return Err(message); }

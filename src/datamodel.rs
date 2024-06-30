@@ -2,7 +2,7 @@
 
 use std::any::Any;
 use std::collections::HashMap;
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 #[cfg(test)]
 use std::println as info;
 use std::sync::Arc;
@@ -17,10 +17,35 @@ use crate::fsm::{Event, ExecutableContentId, Fsm, GlobalData, StateId};
 pub const NULL_DATAMODEL: &str = "NULL";
 pub const NULL_DATAMODEL_LC: &str = "null";
 
+pub const SCXML_TYPE: &str = "http://www.w3.org/TR/scxml/";
+
 pub const SCXML_EVENT_PROCESSOR: &str = "http://www.w3.org/TR/scxml/#SCXMLEventProcessor";
 pub const BASIC_HTTP_EVENT_PROCESSOR: &str = "http://www.w3.org/TR/scxml/#BasicHTTPEventProcessor";
 
+/// Name of system variable "_event" for events
 pub const EVENT_VARIABLE_NAME: &str = "_event";
+
+/// Name of field "name" of system variable "_event"
+pub const EVENT_VARIABLE_FIELD_NAME: &str = "name";
+
+/// Name of field "type" of system variable "_event"
+pub const EVENT_VARIABLE_FIELD_TYPE: &str = "type";
+
+/// Name of field of system variable "_event" "sendid"
+pub const EVENT_VARIABLE_FIELD_SEND_ID: &str = "sendid";
+
+/// Name of field "origin" of system variable "_event"
+pub const EVENT_VARIABLE_FIELD_ORIGIN: &str = "origin";
+
+/// Name of field "origintype" of system variable "_event"
+pub const EVENT_VARIABLE_FIELD_ORIGIN_TYPE: &str = "origintype";
+
+/// Name of field "invokeid" of system variable "_event"
+pub const EVENT_VARIABLE_FIELD_INVOKE_ID: &str = "invokeid";
+
+/// Name of field "data" of system variable "_event"
+pub const EVENT_VARIABLE_FIELD_DATA: &str = "data";
+
 
 
 /// Gets the global data store from a GlobalDataAccess.
@@ -43,7 +68,7 @@ macro_rules! get_global {
 
 /// Currently we assume that we need access to the global-data via a mutex.
 /// If not, change this type to "GlobalData" and adapt macros access_global and get_global above.
-pub type GlobalDataAccess = std::sync::Arc<std::sync::Mutex<GlobalData>>;
+pub type GlobalDataAccess = Arc<std::sync::Mutex<GlobalData>>;
 
 /// Data model interface trait.
 /// #W3C says:
@@ -82,13 +107,33 @@ pub trait Datamodel {
     fn set_event(&mut self, event: &fsm::Event);
 
     /// Execute an assign expression.
-    fn assign(&mut self, fsm: &Fsm, left_expr: &str, right_expr: &str);
+    fn assign(&mut self, left_expr: &str, right_expr: &str);
 
     /// Gets a global variable by a location expression.\
     /// If the location is undefined or the location expression is invalid,
     /// "error.execute" shall be put inside the internal event queue.\
     /// See [internal_error_execution](Datamodel::internal_error_execution).
     fn get_by_location(&mut self, location: &str) -> Option<Data>;
+
+    /// Convenient function to retrieve a value that has an alternative expression-value.\
+    /// If value_expression is empty, Ok(value) is returned (if empty or not). If the expression
+    /// results in error Err(message) and "error.execute" is put in internal queue.
+    /// See [internal_error_execution](Datamodel::internal_error_execution).
+    fn get_expression_alternative_value(&mut self, value: &String, value_expression: &String) -> Result<String, String> {
+        if value_expression.is_empty() {
+            Ok(value.clone())
+        } else {
+            match self.execute(value_expression.as_str()) {
+                None => {
+                    // Error -> Abort
+                    Err("execution failed".to_string())
+                }
+                Some(value) => {
+                    Ok(value)
+                }
+            }
+        }
+    }
 
     /// Get _ioprocessors.
     fn get_io_processors(&mut self) -> &mut HashMap<String, Box<dyn EventIOProcessor>>;
@@ -105,9 +150,9 @@ pub trait Datamodel {
     /// If the script execution fails, "error.execute" shall be put
     /// inside the internal event queue.
     /// See [internal_error_execution](Datamodel::internal_error_execution).
-    fn execute(&mut self, fsm: &Fsm, script: &str) -> Option<String>;
+    fn execute(&mut self, script: &str) -> Option<String>;
 
-    fn execute_for_each(&mut self, fsm: &Fsm, array_expression: &str, item: &str, index: &str,
+    fn execute_for_each(&mut self, array_expression: &str, item: &str, index: &str,
                         execute_body: &mut dyn FnMut(&mut dyn Datamodel));
 
     /// #W3C says:
@@ -118,7 +163,7 @@ pub trait Datamodel {
     /// #Actual Implementation:
     /// As no side-effects shall occur, this method should be "&self". But we assume that most script-engines have
     /// no read-only "eval" function and such method may be hard to implement.
-    fn execute_condition(&mut self, fsm: &Fsm, script: &str) -> Result<bool, String>;
+    fn execute_condition(&mut self, script: &str) -> Result<bool, String>;
 
     #[allow(non_snake_case)]
     fn executeContent(&mut self, fsm: &Fsm, contentId: ExecutableContentId);
@@ -188,10 +233,6 @@ impl Datamodel for NullDatamodel {
         // TODO
     }
 
-    fn set_event(&mut self, _event: &crate::fsm::Event) {
-        // nothing to do
-    }
-
     #[allow(non_snake_case)]
     fn initializeDataModel(self: &mut Self, _fsm: &mut Fsm, _dataState: StateId) {
         // nothing to do
@@ -201,7 +242,11 @@ impl Datamodel for NullDatamodel {
         // nothing to do
     }
 
-    fn assign(self: &mut NullDatamodel, _fsm: &Fsm, _left_expr: &str, _right_expr: &str) {
+    fn set_event(&mut self, _event: &Event) {
+        // nothing to do
+    }
+
+    fn assign(self: &mut NullDatamodel, _left_expr: &str, _right_expr: &str) {
         // nothing to do
     }
 
@@ -223,11 +268,11 @@ impl Datamodel for NullDatamodel {
         info!("Log: {}", msg);
     }
 
-    fn execute(&mut self, _fsm: &Fsm, _script: &str) -> Option<String> {
+    fn execute(&mut self, _script: &str) -> Option<String> {
         None
     }
 
-    fn execute_for_each(&mut self, _fsm: &Fsm, _array_expression: &str, _item: &str, _index: &str,
+    fn execute_for_each(&mut self, _array_expression: &str, _item: &str, _index: &str,
                         _execute_body: &mut dyn FnMut(&mut dyn Datamodel)) {
         // nothing to do
     }
@@ -236,7 +281,7 @@ impl Datamodel for NullDatamodel {
     /// The boolean expression language consists of the In predicate only.
     /// It has the form 'In(id)', where id is the id of a state in the enclosing state machine.
     /// The predicate must return 'true' if and only if that state is in the current state configuration.
-    fn execute_condition(&mut self, _fsm: &Fsm, _script: &str) -> Result<bool, String> {
+    fn execute_condition(&mut self, _script: &str) -> Result<bool, String> {
         // TODO: Support for "In" predicate
         Ok(false)
     }
@@ -288,16 +333,17 @@ impl Debug for Data {
     }
 }
 
-impl ToString for Data {
-    fn to_string(&self) -> String {
-        match &self.value {
+impl Display for Data {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let str = match &self.value {
             Some(v) => {
                 v.clone()
             }
             None => {
                 "null".to_string()
             }
-        }
+        };
+        write!(f, "{}", str)
     }
 }
 

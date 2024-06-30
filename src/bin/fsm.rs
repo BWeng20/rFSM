@@ -4,6 +4,7 @@
 extern crate core;
 
 use std::{io, process, thread, time};
+use std::collections::HashMap;
 use std::io::{stdout, Write};
 
 use rfsm::fsm::{Event, EventType};
@@ -29,7 +30,7 @@ async fn main() {
         process::exit(1);
     }
 
-    let mut executor = FsmExecutor::new().await;
+    let mut executor = FsmExecutor::new_with_io_processor().await;
     executor.set_include_paths_from_arguments(&named_opt);
 
     let (thread_handle, mut sender) = executor.execute(final_args[0].as_str(), trace).unwrap();
@@ -81,7 +82,7 @@ async fn main() {
                             origin: empty_str.clone(),
                             origin_type: empty_str.clone(),
                             invoke_id: 1,
-                            data: None,
+                            data: HashMap::new(),
                         });
                         match sender.send(event) {
                             Ok(_r) => {

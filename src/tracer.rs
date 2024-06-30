@@ -22,6 +22,7 @@ pub enum TraceMode {
     ARGUMENTS,
     RESULTS,
     ALL,
+    NONE,
 }
 
 pub static TRACE_ARGUMENT_OPTION: ArgOption =
@@ -205,6 +206,9 @@ pub trait Tracer: Send + Debug {
     fn trace_id_set(&self, what: &str, l: &OrderedSet<u32>) {
         self.trace(format!("{}=({})", what, fsm::vec_to_string(&l.data)).as_str());
     }
+
+    /// Get trace mode
+    fn trace_mode(&self) -> TraceMode;
 }
 
 impl Tracer for DefaultTracer {
@@ -236,6 +240,20 @@ impl Tracer for DefaultTracer {
 
     fn is_trace(&self, flag: TraceMode) -> bool {
         self.trace_flags.contains(&flag) || self.trace_flags.contains(&TraceMode::ALL)
+    }
+
+    fn trace_mode(&self) -> TraceMode {
+        if self.is_trace(TraceMode::ALL) {
+            TraceMode::ALL
+        } else if self.is_trace(TraceMode::EVENTS) {
+            TraceMode::EVENTS
+        } else if self.is_trace(TraceMode::STATES) {
+            TraceMode::STATES
+        } else if self.is_trace(TraceMode::METHODS) {
+            TraceMode::METHODS
+        } else {
+            TraceMode::NONE
+        }
     }
 }
 
