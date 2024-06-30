@@ -18,8 +18,8 @@ use quick_xml::events::attributes::Attributes;
 use quick_xml::Reader;
 
 use crate::datamodel::Data;
-use crate::executable_content::{Assign, Cancel, ExecutableContent, Expression, ForEach, get_opt_executable_content_as, get_safe_executable_content_as, If, Log, Parameter, parse_duration_to_milliseconds, Raise, SendParameters, TARGET_SCXML_EVENT_PROCESSOR};
-use crate::fsm::{BindingType, DoneData, ExecutableContentId, Fsm, HistoryType, ID_COUNTER, Invoke, map_history_type, map_transition_type, State, StateId, Transition, TransitionId, TransitionType};
+use crate::executable_content::{Assign, ExecutableContent, Expression, ForEach, get_opt_executable_content_as, get_safe_executable_content_as, If, Log, parse_duration_to_milliseconds, Raise, TARGET_SCXML_EVENT_PROCESSOR};
+use crate::fsm::{BindingType, Cancel, SendParameters, Parameter, DoneData, ExecutableContentId, Fsm, HistoryType, ID_COUNTER, Invoke, map_history_type, map_transition_type, State, StateId, Transition, TransitionId, TransitionType};
 use crate::fsm::vec_to_string;
 
 pub type AttributeMap = HashMap<String, String>;
@@ -1211,41 +1211,41 @@ impl ReaderState {
 
         let parent_tag = self.get_parent_tag().to_string();
 
-        self.get_current_state().donedata = Some(DoneData::new());
 
-        match parent_tag.as_str() {
-            TAG_SEND => {
-                let ec_id = self.current_executable_content;
-                let ec = self.get_last_executable_content_entry_for_region(ec_id);
-                if ec.is_some() {
-                    let mut param = Parameter::new();
+        let mut param = Parameter::new();
 
-                    param.name = Self::get_required_attr(TAG_PARAM, ATTR_NAME, attr).clone();
+        param.name = Self::get_required_attr(TAG_PARAM, ATTR_NAME, attr).clone();
+        let expr = attr.get(ATTR_EXPR);
+        if expr.is_some() {
+            param.expr = expr.unwrap().clone();
+        }
+        let location = attr.get(ATTR_LOCATION);
+        if location.is_some() {
+            if expr.is_some() {
+                panic!("{} shall have only {} or {}, but not both.", TAG_PARAM, ATTR_LOCATION, ATTR_EXPR);
+            }
+            param.location = location.unwrap().clone();
+        }
 
-                    let expr = attr.get(ATTR_EXPR);
-                    if expr.is_some() {
-                        param.expr = expr.unwrap().clone();
-                    }
-
-                    let location = attr.get(ATTR_LOCATION);
-                    if location.is_some() {
-                        if expr.is_some() {
-                            panic!("{} shall have only {} or {}, but not both.", TAG_PARAM, ATTR_LOCATION, ATTR_EXPR);
-                        }
-                        param.location = location.unwrap().clone();
-                    }
+        let ec_id = self.current_executable_content;
+        let ec = self.get_last_executable_content_entry_for_region(ec_id);
+        if ec.is_some() {
+            match parent_tag.as_str() {
+                TAG_SEND => {
                     let send = get_safe_executable_content_as::<SendParameters>(ec.unwrap());
                     send.params.push(param);
                 }
-            }
-            TAG_INVOKE => {
-                todo!()
-            }
-            TAG_DONEDATA => {
-                todo!()
-            }
-            _ => {
-                panic!("Internal Error: invalid parent-tag <{}> in start_param", parent_tag)
+                TAG_INVOKE => {
+                    let invoke = get_safe_executable_content_as::<Invoke>(ec.unwrap());
+                    invoke.params.push(param);
+                }
+                TAG_DONEDATA => {
+                    let done_data = get_safe_executable_content_as::<DoneData>(ec.unwrap());
+                    done_data.params.push(param);
+                }
+                _ => {
+                    panic!("Internal Error: invalid parent-tag <{}> in start_param", parent_tag)
+                }
             }
         }
     }

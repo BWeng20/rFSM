@@ -15,7 +15,7 @@ use regex::Regex;
 
 use crate::{Event, EventType, get_global};
 use crate::datamodel::{Datamodel, SCXML_EVENT_PROCESSOR, ToAny};
-use crate::fsm::{ExecutableContentId, Fsm, vec_to_string};
+use crate::fsm::{Cancel, ExecutableContentId, Fsm, Parameter, SendParameters, vec_to_string};
 
 pub const TARGET_INTERNAL: &str = "_internal";
 pub const TARGET_SCXML_EVENT_PROCESSOR: &str = "http://www.w3.org/TR/scxml/#SCXMLEventProcessor";
@@ -110,41 +110,6 @@ pub struct ForEach {
     pub content: ExecutableContentId,
 }
 
-/// Stores \<param\> elements for \<send\>, \<donedata\> or \<invoke\>
-pub struct Parameter {
-    pub name: String,
-    pub expr: String,
-    pub location: String,
-}
-
-pub struct SendParameters {
-    /// The SCXML idlocation
-    pub name_location: String,
-    /// The SCXML id.
-    pub name: String,
-    pub event: String,
-    pub event_expr: String,
-    pub target: String,
-    pub target_expr: String,
-    pub type_value: String,
-    pub type_expr: String,
-    pub delay_ms: u64,
-    pub delay_expr: String,
-    pub name_list: String,
-
-    /// content inside \<content\> child
-    pub content: String,
-    /// expr-attribute of \<content\> child
-    pub content_expr: String,
-
-    /// \<param\> children
-    pub params: Vec<Parameter>,
-}
-
-pub struct Cancel {
-    pub send_id: String,
-    pub send_id_expr: String,
-}
 
 /// #W3C says:
 /// The \<raise\> element raises an event in the current SCXML session.\
@@ -225,42 +190,6 @@ impl ExecutableContent for Raise {
 
     fn trace(&self, tracer: &mut dyn ExecutableContentTracer, _fsm: &Fsm) {
         tracer.print_name_and_attributes(self, &[("event", &self.event)]);
-    }
-}
-
-impl Cancel {
-    pub fn new() -> Cancel {
-        Cancel {
-            send_id: String::new(),
-            send_id_expr: String::new(),
-        }
-    }
-}
-
-impl Debug for Cancel {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Cancel")
-            .field("send_id", &self.send_id)
-            .field("send_id_expr", &self.send_id_expr)
-            .finish()
-    }
-}
-
-impl ExecutableContent for Cancel {
-    fn execute(&self, _datamodel: &mut dyn Datamodel, _fsm: &Fsm) {
-        todo!()
-    }
-
-    fn get_type(&self) -> &str {
-        TYPE_CANCEL
-    }
-
-    fn trace(&self, tracer: &mut dyn ExecutableContentTracer, _fsm: &Fsm) {
-        tracer.print_name_and_attributes(self,
-                                         &[
-                                             ("sendid", &self.send_id),
-                                             ("sendidexpr", &self.send_id_expr)
-                                         ]);
     }
 }
 
@@ -444,33 +373,21 @@ impl Display for Parameter {
     }
 }
 
-
-impl SendParameters {
-    pub fn new() -> SendParameters {
-        SendParameters {
-            name_location: "".to_string(),
-            name: "".to_string(),
-            event: "".to_string(),
-            event_expr: "".to_string(),
-            target: "".to_string(),
-            target_expr: "".to_string(),
-            type_value: "".to_string(),
-            type_expr: "".to_string(),
-            delay_ms: 0,
-            delay_expr: "".to_string(),
-            name_list: "".to_string(),
-            content: "".to_string(),
-            content_expr: "".to_string(),
-            params: Vec::new(),
-        }
+impl ExecutableContent for Cancel {
+    fn execute(&self, _datamodel: &mut dyn Datamodel, _fsm: &Fsm) {
+        todo!()
     }
-}
 
-impl Debug for SendParameters {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Send")
-            .field("name", &self.name)
-            .finish()
+    fn get_type(&self) -> &str {
+        TYPE_CANCEL
+    }
+
+    fn trace(&self, tracer: &mut dyn ExecutableContentTracer, _fsm: &Fsm) {
+        tracer.print_name_and_attributes(self,
+                                         &[
+                                             ("sendid", &self.send_id),
+                                             ("sendidexpr", &self.send_id_expr)
+                                         ]);
     }
 }
 

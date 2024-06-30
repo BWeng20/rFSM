@@ -25,7 +25,7 @@ use crate::datamodel::{Data, Datamodel, DataStore, NULL_DATAMODEL, NULL_DATAMODE
 #[cfg(feature = "ECMAScript")]
 use crate::ecma_script_datamodel::{ECMA_SCRIPT_LC, ECMAScriptDatamodel};
 use crate::event_io_processor::EventIOProcessor;
-use crate::executable_content::ExecutableContent;
+use crate::executable_content::{ExecutableContent};
 use crate::fsm_executor::ExecuterState;
 use crate::get_global;
 use crate::tracer::{DefaultTracer, TraceMode, Tracer};
@@ -659,6 +659,9 @@ pub struct Invoke {
     /// A flag indicating whether to forward events to the invoked process.
     pub autoforward: bool,
 
+    /// \<param\> children
+    pub params: Vec<Parameter>,
+
     /// content inside \<content\> child
     pub content: String,
 
@@ -683,6 +686,7 @@ impl Invoke {
             src: "".to_string(),
             src_expr: "".to_string(),
             autoforward: false,
+            params: Vec::new(),
             content: "".to_string(),
             content_expr: "".to_string(),
             finalize: 0,
@@ -706,6 +710,92 @@ impl Debug for Invoke {
             .finish()
     }
 }
+
+
+/// Stores \<param\> elements for \<send\>, \<donedata\> or \<invoke\>
+#[derive(Debug, Clone, PartialEq)]
+pub struct Parameter {
+    pub name: String,
+    pub expr: String,
+    pub location: String,
+}
+
+pub struct Cancel {
+    pub send_id: String,
+    pub send_id_expr: String,
+}
+
+pub struct SendParameters {
+    /// The SCXML idlocation
+    pub name_location: String,
+    /// The SCXML id.
+    pub name: String,
+    pub event: String,
+    pub event_expr: String,
+    pub target: String,
+    pub target_expr: String,
+    pub type_value: String,
+    pub type_expr: String,
+    pub delay_ms: u64,
+    pub delay_expr: String,
+    pub name_list: String,
+
+    /// content inside \<content\> child
+    pub content: String,
+    /// expr-attribute of \<content\> child
+    pub content_expr: String,
+
+    /// \<param\> children
+    pub params: Vec<Parameter>,
+}
+
+impl SendParameters {
+    pub fn new() -> SendParameters {
+        SendParameters {
+            name_location: "".to_string(),
+            name: "".to_string(),
+            event: "".to_string(),
+            event_expr: "".to_string(),
+            target: "".to_string(),
+            target_expr: "".to_string(),
+            type_value: "".to_string(),
+            type_expr: "".to_string(),
+            delay_ms: 0,
+            delay_expr: "".to_string(),
+            name_list: "".to_string(),
+            content: "".to_string(),
+            content_expr: "".to_string(),
+            params: Vec::new(),
+        }
+    }
+}
+
+impl Debug for SendParameters {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Send")
+            .field("name", &self.name)
+            .finish()
+    }
+}
+
+impl Cancel {
+    pub fn new() -> Cancel {
+        Cancel {
+            send_id: String::new(),
+            send_id_expr: String::new(),
+        }
+    }
+}
+
+impl Debug for Cancel {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Cancel")
+            .field("send_id", &self.send_id)
+            .field("send_id_expr", &self.send_id_expr)
+            .finish()
+    }
+}
+
 
 /// #W3C says:
 /// ##Global variables
@@ -2374,6 +2464,10 @@ pub struct DoneData {
     pub content: String,
     /// expr-attribute of \<content\> child
     pub content_expr: String,
+
+    /// \<param\> children
+    pub params: Vec<Parameter>,
+
 }
 
 impl DoneData {
@@ -2381,6 +2475,7 @@ impl DoneData {
         DoneData {
             content: String::new(),
             content_expr: String::new(),
+            params: Vec::new(),
         }
     }
 }

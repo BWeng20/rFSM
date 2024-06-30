@@ -46,14 +46,14 @@ pub struct BasicHTTPEventIOProcessorServerData {
 }
 
 /// The parsed payload of a http request
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 struct Message {
     pub event: String,
     pub session: String,
 }
 
 /// Event processed by the message thread of the processor.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum BasicHTTPEvent {
     /// A http request was parsed and shall to be executed by the target fsm.
     Message(Message),
@@ -136,7 +136,7 @@ impl BasicHTTPEvent {
     }
 }
 
-async fn handle_request(req: Request<hyper::body::Incoming>, tx: mpsc::Sender<Box<BasicHTTPEvent>>) -> Result<Response<Bytes>, Infallible> {
+async fn handle_request(req: Request<hyper::body::Incoming>, tx: mpsc::Sender<Box<BasicHTTPEvent>>) -> Result<Response<Full<Bytes>>, Infallible> {
     debug!("Serve {:?}", req );
 
     let rs =
@@ -149,22 +149,18 @@ async fn handle_request(req: Request<hyper::body::Incoming>, tx: mpsc::Sender<Bo
             match sr {
                 Ok(_) => {
                     debug!("SendOk");
-                    Ok(hyper::Response::builder().status(hyper::StatusCode::OK).body(Bytes::from("Ok")).unwrap())
+                    Ok(hyper::Response::builder().status(hyper::StatusCode::OK).body(Full::new(Bytes::from("Ok"))).unwrap())
                 }
                 Err(error) => {
                     debug!("SendError {:?}", error);
-                    Ok(hyper::Response::builder().status(hyper::StatusCode::INTERNAL_SERVER_ERROR).body(Bytes::from(error.to_string())).unwrap())
+                    Ok(hyper::Response::builder().status(hyper::StatusCode::INTERNAL_SERVER_ERROR).body(Full::new(Bytes::from(error.to_string()))).unwrap())
                 }
             }
         }
         Err(status) => {
-            Ok(hyper::Response::builder().status(status.clone()).body(Bytes::from("Error".to_string())).unwrap())
+            Ok(hyper::Response::builder().status(status.clone()).body(Full::new(Bytes::from("Error".to_string()))).unwrap())
         }
     };
-}
-
-async fn hello(_: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
-    Ok(Response::new(Full::new(Bytes::from("Hello, World!"))))
 }
 
 impl BasicHTTPEventIOProcessor {
@@ -176,7 +172,7 @@ impl BasicHTTPEventIOProcessor {
         info!("HTTP server starting");
 
         let inner_terminate_flag = terminate_flag.clone();
-        let (_sender, receiver_server) = channel::<Box<BasicHTTPEvent>>();
+        let (sender, receiver_server) = channel::<Box<BasicHTTPEvent>>();
 
         let _thread_message_server =
             thread::spawn(move || {
@@ -218,21 +214,22 @@ impl BasicHTTPEventIOProcessor {
                     let (stream, _addr) = server.accept().await.unwrap();
                     let io = TokioIo::new(stream);
 
+                    let tx1 = sender.clone();
 
                     tokio::task::spawn(async move {
-                        /*
-                        let mut serv = service_fn(
-                            move |request| {
-                                let tx = sender.clone();
-                                handle_request(request, tx)
-                            }
-                        );
-*/
-                        // Finally, we bind the incoming connection to our `hello` service
-                        if let Err(err) = http1::Builder::new().serve_connection(io, service_fn(hello))
-                            .await
+                        let tx2 = tx1.clone();
+                        let builder = http1::Builder::new();
+                        let conn = builder.serve_connection(io, service_fn(move |request|  {
+                            handle_request(request, tx2.clone())
+                        }));
+
+                        let r = conn.await;
+                        match r
                         {
-                            eprintln!("Error serving connection: {:?}", err);
+                            Ok(_) => {}
+                            Err(err) => {
+                                eprintln!("Error serving connection: {:?}", err);
+                            }
                         }
                     });
                 }
