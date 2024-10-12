@@ -83,7 +83,7 @@ async fn main() {
         thread::sleep(time::Duration::from_millis(200));
 
         // If FSM was reached final state(s) the worker thread will be finished.
-        match &session.session_thread {
+        match &session.thread {
             None => {}
             Some(thread) => {
                 if thread.is_finished() {

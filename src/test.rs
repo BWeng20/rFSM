@@ -245,10 +245,10 @@ pub fn run_test_manual_with_send(
     cb(session.sender);
 
     info!("FSM started. Waiting to terminate...");
-    if session.session_thread.is_none() {
+    if session.thread.is_none() {
         panic!("Internal error: session_thread not available")
     }
-    let _ = session.session_thread.unwrap().join();
+    let _ = session.thread.unwrap().join();
 
     match &watchdog_sender {
         Some(sender) => {

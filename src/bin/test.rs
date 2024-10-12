@@ -18,6 +18,11 @@ use rfsm::tracer::{TraceMode, TRACE_ARGUMENT_OPTION};
 
 use rfsm::init_logging;
 
+#[cfg(feature = "TraceServer")]
+use rfsm::remote_tracer::run_trace_server;
+#[cfg(feature = "TraceServer")]
+use rfsm::remote_tracer::TRACE_SERVER_ARGUMENT_OPTION;
+
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
     init_logging();
@@ -25,11 +30,23 @@ async fn main() {
     let (named_opt, final_args) = rfsm::get_arguments(&[
         #[cfg(feature = "Trace")]
         &TRACE_ARGUMENT_OPTION,
+        #[cfg(feature = "TraceServer")]
+        &TRACE_SERVER_ARGUMENT_OPTION,
         &INCLUDE_PATH_ARGUMENT_OPTION,
     ]);
 
     #[cfg(feature = "Trace")]
     let trace = TraceMode::from_arguments(&named_opt);
+
+    #[cfg(feature = "TraceServer")]
+    {
+        match named_opt.get(TRACE_SERVER_ARGUMENT_OPTION.name) {
+            None => {}
+            Some(trace_server_adr) => {
+                let _trace_thread = run_trace_server(trace_server_adr.as_str()).await;
+            }
+        }
+    }
 
     #[cfg(feature = "xml")]
     let include_paths = scxml_reader::include_path_from_arguments(&named_opt);
