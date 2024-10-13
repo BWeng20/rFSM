@@ -8,7 +8,6 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::actions::ActionMap;
 use log::error;
-use regex::Regex;
 
 use crate::event_io_processor::EventIOProcessor;
 use crate::fsm::{

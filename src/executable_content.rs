@@ -15,7 +15,6 @@ use log::debug;
 
 #[cfg(not(test))]
 use log::{info, warn};
-use regex::Regex;
 
 use crate::datamodel::{Data, Datamodel, ToAny, SCXML_EVENT_PROCESSOR};
 use crate::fsm::{

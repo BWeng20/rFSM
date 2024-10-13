@@ -1479,7 +1479,6 @@ dependencies = [
  "lazy_static",
  "log",
  "quick-xml",
- "regex",
  "reqwest",
  "serde",
  "serde_json",
