@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::BufReader;
+#[cfg(feature = "xml")]
+use std::io::Read;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::sync::mpsc::Sender;
@@ -64,6 +66,7 @@ pub struct TestUseCase {
     pub include_paths: Vec<PathBuf>,
 }
 
+#[allow(unused_variables)]
 pub fn load_fsm(file_path: &str, include_paths: &[PathBuf]) -> Result<Box<Fsm>, String> {
     let extension = file_path.rsplit('.').next().unwrap_or_default();
 

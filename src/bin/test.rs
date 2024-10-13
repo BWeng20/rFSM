@@ -27,11 +27,13 @@ use rfsm::remote_tracer::TRACE_SERVER_ARGUMENT_OPTION;
 async fn main() {
     init_logging();
 
+    #[allow(unused_variables)]
     let (named_opt, final_args) = rfsm::get_arguments(&[
         #[cfg(feature = "Trace")]
         &TRACE_ARGUMENT_OPTION,
         #[cfg(feature = "TraceServer")]
         &TRACE_SERVER_ARGUMENT_OPTION,
+        #[cfg(feature = "xml")]
         &INCLUDE_PATH_ARGUMENT_OPTION,
     ]);
 
@@ -58,6 +60,7 @@ async fn main() {
     }
 
     let mut test_spec_file = "".to_string();
+    #[allow(unused_mut)]
     let mut config: Option<TestSpecification> = None;
     let mut fsm: Option<Box<Fsm>> = None;
 
