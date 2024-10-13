@@ -81,6 +81,8 @@ impl RemoteTrace {
     }
 }
 
+// TODO: Remove this if finished
+#[allow(unused_variables)]
 impl Tracer for RemoteTrace {
     fn trace(&self, msg: &str) {}
 

@@ -338,7 +338,7 @@ impl TracerFactory for DefaultTracerFactory {
 
 lazy_static! {
     static ref tracer_factory_arc: Arc<Mutex<Box<dyn TracerFactory>>> =
-        { Arc::new(Mutex::new(Box::new(DefaultTracerFactory::new()))) };
+        Arc::new(Mutex::new(Box::new(DefaultTracerFactory::new())));
 }
 pub fn set_tracer_factory(tracer_factory: Box<dyn TracerFactory>) {
     *tracer_factory_arc.lock().unwrap() = tracer_factory;
