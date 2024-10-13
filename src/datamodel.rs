@@ -1,6 +1,5 @@
 //! Defines the API used to access the data models.
 
-use lazy_static::lazy_static;
 use std::any::Any;
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
@@ -10,6 +9,7 @@ use crate::actions::ActionMap;
 use log::error;
 
 use crate::event_io_processor::EventIOProcessor;
+use crate::expression_parser::{ExpressionLexer};
 use crate::fsm::{
     vec_to_string, CommonContent, Event, ExecutableContentId, Fsm, GlobalData, InvokeId, ParamPair, Parameter, StateId,
 };
@@ -464,28 +464,27 @@ impl Datamodel for NullDatamodel {
     /// It has the form 'In(id)', where id is the id of a state in the enclosing state machine.
     /// The predicate must return 'true' if and only if that state is in the current state configuration.
     fn execute_condition(&mut self, script: &str) -> Result<bool, String> {
-        lazy_static! {
-            static ref IN_RE: Regex = Regex::new(r"In\((.*)\)").unwrap();
-        }
 
-        let caps = IN_RE.captures(script);
-        if caps.is_none() {
-            Ok(false)
-        } else {
-            let mut value = caps.unwrap().get(1).map_or("", |m| m.as_str()).trim();
-            if value.starts_with('\'') && value.ends_with('\'') {
-                value = &value[1..value.len() - 1];
-            }
-            match self.state_name_to_id.get(value) {
-                None => Ok(false),
-                Some(state_id) => {
-                    if self.global.lock().configuration.data.contains(state_id) {
-                        Ok(true)
-                    } else {
-                        Ok(false)
+        let mut exp = ExpressionLexer::new(script.to_string());
+        let mn = exp.next_name();
+        match mn
+        {
+            Ok(name) => {
+                todo!();
+                let value = "AAA";
+                match self.state_name_to_id.get(value) {
+                    None => Ok(false),
+                    Some(state_id) => {
+                        if self.global.lock().configuration.data.contains(state_id) {
+                            Ok(true)
+                        } else {
+                            Ok(false)
+                        }
                     }
                 }
+
             }
+            Err(_) => { Err("Illegal format".to_string()) }
         }
     }
 

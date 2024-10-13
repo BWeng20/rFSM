@@ -22,7 +22,7 @@ name = "rfsm"
 path = "src/lib.rs"
 
 [features]
-default = [ "json-config", "serializer" ]
+default = [ "json-config", "serializer", "xml" ]
 ECMAScript = ["boa_engine", "boa_gc"]
 BasicHttpEventIOProcessor = ["hyper", "http-body-util", "hyper-util", "form_urlencoded"]
 yaml-config = ["yaml-rust"]

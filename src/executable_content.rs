@@ -7,7 +7,6 @@ use std::sync::atomic::Ordering;
 #[cfg(test)]
 use std::{println as info, println as warn};
 
-use lazy_static::lazy_static;
 use log::error;
 
 #[cfg(feature = "Debug")]
@@ -23,6 +22,7 @@ use crate::fsm::{
 };
 use crate::scxml_event_io_processor::SCXML_TARGET_INTERNAL;
 use crate::{get_global, Event, EventType};
+use crate::expression_parser::{ExpressionLexer, NumericToken, Token};
 
 pub const TARGET_SCXML_EVENT_PROCESSOR: &str = "http://www.w3.org/TR/scxml/#SCXMLEventProcessor";
 
@@ -729,45 +729,36 @@ mod tests {
 /// a duration.
 /// RegExp: "\\d*(\\.\\d+)?(ms|s|m|h|d))").
 pub fn parse_duration_to_milliseconds(d: &str) -> i64 {
-    lazy_static! {
-        static ref DURATION_RE: Regex = Regex::new(r"^(\d*(\.\d+)?)(MS|S|M|H|D|ms|s|m|h|d)$").unwrap();
-    }
     if d.is_empty() {
         0
     } else {
-        let caps = DURATION_RE.captures(d);
-        if caps.is_none() {
-            -1
-        } else {
-            let cap = caps.unwrap();
-            let value = cap.get(1).map_or("", |m| m.as_str());
-            let unit = cap.get(3).map_or("", |m| m.as_str());
+        let mut exp = ExpressionLexer::new(d.to_string());
+        let value_result = exp.next_number();
+        if value_result.is_err() {
+            return 0;
+        }
+        let Ok(unit) = exp.next_name() else { return 0; };
 
-            if value.is_empty() {
-                0
-            } else {
-                let mut v: f64 = value.parse::<f64>().unwrap();
-                match unit {
-                    "D" | "d" => {
-                        v *= 24.0 * 60.0 * 60.0 * 1000.0;
-                    }
-                    "H" | "h" => {
-                        v *= 60.0 * 60.0 * 1000.0;
-                    }
-                    "M" | "m" => {
-                        v *= 60000.0;
-                    }
-                    "S" | "s" => {
-                        v *= 1000.0;
-                    }
-                    "MS" | "ms" => {}
-                    _ => {
-                        return -1;
-                    }
-                }
-                v.round() as i64
+        let mut v = value_result.unwrap().as_double();
+        match unit.as_str() {
+            "D" | "d" => {
+                v *= 24.0 * 60.0 * 60.0 * 1000.0;
+            }
+            "H" | "h" => {
+                v *= 60.0 * 60.0 * 1000.0;
+            }
+            "M" | "m" => {
+                v *= 60000.0;
+            }
+            "S" | "s" => {
+                v *= 1000.0;
+            }
+            "MS" | "ms" => {}
+            _ => {
+                return -1;
             }
         }
+        v.round() as i64
     }
 }
 
