@@ -18,7 +18,7 @@ pub async fn run_trace_server(address: &str) -> tokio::task::JoinHandle<()> {
 
     set_tracer_factory(Box::new(RemoteTracerFactory {}));
 
-    let thread = tokio::task::spawn(async move {
+    tokio::task::spawn(async move {
         let listener = TcpListener::bind(address_clone.as_str()).await;
 
         if let Ok(listener) = listener {
@@ -36,9 +36,7 @@ pub async fn run_trace_server(address: &str) -> tokio::task::JoinHandle<()> {
                 };
             }
         }
-    });
-
-    thread
+    })
 }
 
 async fn handle_connection(socket: TcpStream) {
@@ -78,6 +76,12 @@ pub struct RemoteTrace {}
 impl RemoteTrace {
     pub fn new() -> RemoteTrace {
         RemoteTrace {}
+    }
+}
+
+impl Default for RemoteTrace {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

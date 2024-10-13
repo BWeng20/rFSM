@@ -19,10 +19,10 @@ use crate::basic_http_event_io_processor::BasicHTTPEventIOProcessor;
 use crate::datamodel::DATAMODEL_OPTION_PREFIX;
 use crate::event_io_processor::EventIOProcessor;
 use crate::fsm;
-use crate::fsm::{Event, FinishMode, InvokeId, ParamPair, ScxmlSession, SessionId};
-use crate::scxml_event_io_processor::ScxmlEventIOProcessor;
 #[cfg(not(feature = "xml"))]
 use crate::fsm::Fsm;
+use crate::fsm::{Event, FinishMode, InvokeId, ParamPair, ScxmlSession, SessionId};
+use crate::scxml_event_io_processor::ScxmlEventIOProcessor;
 #[cfg(feature = "xml")]
 use crate::scxml_reader;
 #[cfg(feature = "xml")]

@@ -330,6 +330,12 @@ impl DefaultTracerFactory {
     }
 }
 
+impl Default for DefaultTracerFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TracerFactory for DefaultTracerFactory {
     fn create(&mut self) -> Box<dyn Tracer> {
         Box::new(DefaultTracer::new())
