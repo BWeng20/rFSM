@@ -1,3 +1,4 @@
+use lazy_static::lazy_static;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -6,6 +7,7 @@ use std::ops::DerefMut;
 #[cfg(test)]
 use std::println as info;
 use std::str::FromStr;
+use std::sync::{Arc, Mutex};
 
 #[cfg(not(test))]
 use log::info;
@@ -77,6 +79,8 @@ impl FromStr for TraceMode {
 /// states inside the FSM. What is traced can be controlled by
 /// [Tracer::enable_trace] and [Tracer::disable_trace], see [TraceMode].
 pub trait Tracer: Send + Debug {
+    /// Needed by a minimalistic implementation. Default methods below call this
+    /// Method with a textual representation of the trace-event.
     fn trace(&self, msg: &str);
 
     /// Enter a sub-scope, e.g. by increase the log indentation.
@@ -110,7 +114,7 @@ pub trait Tracer: Send + Debug {
         }
     }
 
-    /// Called by FSM if an internal event is send
+    /// Called by FSM if an internal event is sent
     fn event_internal_send(&self, what: &Event) {
         if self.is_trace(TraceMode::EVENTS) {
             self.trace(format!("Send Internal Event: {} #{:?}", what.name, what.invoke_id).as_str());
@@ -312,4 +316,40 @@ impl DefaultTracer {
 thread_local! {
    /// Trace prefix for [DefaultTracer]
    static TRACE_PREFIX: RefCell<String> = RefCell::new("".to_string());
+}
+
+pub trait TracerFactory: Send {
+    fn create(&mut self) -> Box<dyn Tracer>;
+}
+
+pub struct DefaultTracerFactory {}
+
+impl DefaultTracerFactory {
+    pub fn new() -> DefaultTracerFactory {
+        DefaultTracerFactory {}
+    }
+}
+
+impl Default for DefaultTracerFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TracerFactory for DefaultTracerFactory {
+    fn create(&mut self) -> Box<dyn Tracer> {
+        Box::new(DefaultTracer::new())
+    }
+}
+
+lazy_static! {
+    static ref tracer_factory_arc: Arc<Mutex<Box<dyn TracerFactory>>> =
+        Arc::new(Mutex::new(Box::new(DefaultTracerFactory::new())));
+}
+pub fn set_tracer_factory(tracer_factory: Box<dyn TracerFactory>) {
+    *tracer_factory_arc.lock().unwrap() = tracer_factory;
+}
+
+pub fn create_tracer() -> Box<dyn Tracer> {
+    tracer_factory_arc.lock().unwrap().create()
 }

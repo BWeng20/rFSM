@@ -19,12 +19,17 @@ use crate::basic_http_event_io_processor::BasicHTTPEventIOProcessor;
 use crate::datamodel::DATAMODEL_OPTION_PREFIX;
 use crate::event_io_processor::EventIOProcessor;
 use crate::fsm;
+#[cfg(not(feature = "xml"))]
+use crate::fsm::Fsm;
 use crate::fsm::{Event, FinishMode, InvokeId, ParamPair, ScxmlSession, SessionId};
 use crate::scxml_event_io_processor::ScxmlEventIOProcessor;
 #[cfg(feature = "xml")]
 use crate::scxml_reader;
+#[cfg(feature = "xml")]
 use crate::scxml_reader::include_path_from_arguments;
+#[cfg(feature = "serializer")]
 use crate::serializer::default_protocol_reader::DefaultProtocolReader;
+#[cfg(feature = "serializer")]
 use crate::serializer::fsm_reader::FsmReader;
 #[cfg(feature = "Trace")]
 use crate::tracer::TraceMode;
@@ -197,6 +202,7 @@ impl FsmExecutor {
     /// Loads and starts the specified FSM with some data set.\
     /// Normally used if a child-FSM is started from a parent FSM, in this case via inline content.
     #[allow(clippy::too_many_arguments)]
+    #[allow(unused_variables)]
     pub fn execute_with_data_from_xml(
         &mut self,
         xml: &str,

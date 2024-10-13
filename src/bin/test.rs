@@ -18,18 +18,37 @@ use rfsm::tracer::{TraceMode, TRACE_ARGUMENT_OPTION};
 
 use rfsm::init_logging;
 
+#[cfg(feature = "TraceServer")]
+use rfsm::remote_tracer::run_trace_server;
+#[cfg(feature = "TraceServer")]
+use rfsm::remote_tracer::TRACE_SERVER_ARGUMENT_OPTION;
+
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
     init_logging();
 
+    #[allow(unused_variables)]
     let (named_opt, final_args) = rfsm::get_arguments(&[
         #[cfg(feature = "Trace")]
         &TRACE_ARGUMENT_OPTION,
+        #[cfg(feature = "TraceServer")]
+        &TRACE_SERVER_ARGUMENT_OPTION,
+        #[cfg(feature = "xml")]
         &INCLUDE_PATH_ARGUMENT_OPTION,
     ]);
 
     #[cfg(feature = "Trace")]
     let trace = TraceMode::from_arguments(&named_opt);
+
+    #[cfg(feature = "TraceServer")]
+    {
+        match named_opt.get(TRACE_SERVER_ARGUMENT_OPTION.name) {
+            None => {}
+            Some(trace_server_adr) => {
+                let _trace_thread = run_trace_server(trace_server_adr.as_str()).await;
+            }
+        }
+    }
 
     #[cfg(feature = "xml")]
     let include_paths = scxml_reader::include_path_from_arguments(&named_opt);
@@ -41,6 +60,7 @@ async fn main() {
     }
 
     let mut test_spec_file = "".to_string();
+    #[allow(unused_mut)]
     let mut config: Option<TestSpecification> = None;
     let mut fsm: Option<Box<Fsm>> = None;
 

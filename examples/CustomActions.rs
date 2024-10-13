@@ -27,10 +27,12 @@ impl Action for MyAction {
     }
 }
 
-/// The FSM needs tokio.
+/// The FSM needs tokio :)
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
+    // if feature EnvLog is active, this will initialize env_logger.
     init_logging();
+
     debug!(
         r#"Action Example
 -----------------------------------------
@@ -39,10 +41,7 @@ These actions can be called at any element that containt expressions or executab
 "#
     );
 
-    // In this example we don't need any io-processor.
-    // Otherwise:
-    // let mut executor = FsmExecutor::new_with_io_processor().await;
-    let mut executor = FsmExecutor::new_without_io_processor();
+    // Create the wrapper to store our actions.
     let mut actions = ActionWrapper::new();
 
     // We register the same function with different names.
@@ -52,9 +51,21 @@ These actions can be called at any element that containt expressions or executab
 
     let session;
 
+    // Create the fsm-executor.
+    // In this example we don't need any io-processor.
+    // Otherwise: let mut executor = FsmExecutor::new_with_io_processor().await;
+    let mut executor = FsmExecutor::new_without_io_processor();
+
+    // Start the FSM. Executor has different alternative
+    // of this execute-methode. You can load the FSM also from memory,
+    // or add some data to initialize the data-model.
     match executor.execute(
         "examples/CustomActions.scxml",
         actions,
+        // If Trace feature is enabled, we can trigger additional output about
+        // states and transitions. See TraceMode for the different modes.
+        // The Trace feature is designed to be used for external monitoring of
+        // the FSM, here it will only print the state transitions.
         #[cfg(feature = "Trace")]
         TraceMode::ALL,
     ) {
@@ -66,6 +77,11 @@ These actions can be called at any element that containt expressions or executab
             exit(1);
         }
     };
-    let _ = session.session_thread.unwrap().join();
+    // The FSM now runs in some other thread.
+    // We could send events to the session via session.sender.
+    // As we have nothing else to do here... we wait.
+    // The example fsm will terminate after some timeout.
+    let _ = session.thread.unwrap().join();
+
     exit(0)
 }

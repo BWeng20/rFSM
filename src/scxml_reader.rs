@@ -12,8 +12,8 @@ use std::println as debug;
 
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::{env, mem, str, string::String};
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::{env, mem, str, string::String};
 
 use crate::ArgOption;
 #[cfg(feature = "Debug_Reader")]
@@ -1944,9 +1944,13 @@ pub fn parse_from_uri(uri: String, include_paths: &[PathBuf]) -> Result<Box<Fsm>
             match r {
                 Ok(_m) => {
                     let end = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-                    info!("'{}' (XML) loaded in {}ms", rs.fsm.name, end.as_millis()-start.as_millis() );
+                    info!(
+                        "'{}' (XML) loaded in {}ms",
+                        rs.fsm.name,
+                        end.as_millis() - start.as_millis()
+                    );
                     Ok(rs.fsm)
-                },
+                }
                 Err(e) => Err(e),
             }
         }

@@ -39,17 +39,22 @@ use crate::datamodel::{
     NULL_DATAMODEL_LC, SCXML_INVOKE_TYPE, SCXML_INVOKE_TYPE_SHORT, SESSION_ID_VARIABLE_NAME,
     SESSION_NAME_VARIABLE_NAME,
 };
+#[cfg(feature = "ECMAScript")]
 use crate::ecma_script_datamodel::ECMAScriptDatamodelFactory;
 #[cfg(feature = "ECMAScript")]
 use crate::ecma_script_datamodel::ECMA_SCRIPT_LC;
+
 use crate::event_io_processor::EventIOProcessor;
 use crate::executable_content::ExecutableContent;
 use crate::fsm::BindingType::{Early, Late};
 use crate::fsm_executor::FsmExecutor;
 use crate::get_global;
 use crate::scxml_event_io_processor::{SCXML_EVENT_PROCESSOR_SHORT_TYPE, SCXML_TARGET_SESSION_ID_PREFIX};
+
 #[cfg(feature = "Trace")]
-use crate::tracer::{DefaultTracer, TraceMode, Tracer};
+use crate::tracer::create_tracer;
+#[cfg(feature = "Trace")]
+use crate::tracer::{TraceMode, Tracer};
 
 /// Platform specific event to cancel the current session.
 pub const EVENT_CANCEL_SESSION: &str = "error.platform.cancel";
@@ -162,7 +167,7 @@ pub fn start_fsm_with_data_and_finish_mode(
             debug!("SM finished");
         });
 
-    let _ = session.session_thread.insert(thread.unwrap());
+    let _ = session.thread.insert(thread.unwrap());
     session
 }
 
@@ -1063,7 +1068,7 @@ pub enum FinishMode {
 /// Holds thread-id and channel-sender to the external queue of the session.
 pub struct ScxmlSession {
     pub session_id: SessionId,
-    pub session_thread: Option<JoinHandle<()>>,
+    pub thread: Option<JoinHandle<()>>,
     pub sender: Sender<Box<Event>>,
     /// global_data should be access after the FSM is finished to avoid deadlocks.
     pub global_data: GlobalDataArc,
@@ -1089,7 +1094,7 @@ impl ScxmlSession {
     pub fn new_without_join_handle(id: SessionId, sender: Sender<Box<Event>>) -> ScxmlSession {
         ScxmlSession {
             session_id: id,
-            session_thread: None,
+            thread: None,
             sender,
             global_data: GlobalDataArc::new(),
             invoke_doc_id: 0,
@@ -1102,7 +1107,7 @@ impl Clone for ScxmlSession {
     fn clone(&self) -> Self {
         ScxmlSession {
             session_id: self.session_id,
-            session_thread: None,
+            thread: None,
             sender: self.sender.clone(),
             global_data: self.global_data.clone(),
             state_id: self.state_id,
@@ -1112,7 +1117,7 @@ impl Clone for ScxmlSession {
 
     fn clone_from(&mut self, source: &Self) {
         self.session_id = source.session_id;
-        self.session_thread = None;
+        self.thread = None;
         self.sender = source.sender.clone();
         self.state_id = source.state_id;
         self.invoke_doc_id = source.invoke_doc_id;
@@ -1216,7 +1221,7 @@ impl Fsm {
             transitions: HashMap::new(),
             pseudo_root: 0,
             #[cfg(feature = "Trace")]
-            tracer: Box::new(DefaultTracer::new()),
+            tracer: create_tracer(),
             caller_invoke_id: None,
             parent_session_id: None,
             name: "FSM".to_string(),
