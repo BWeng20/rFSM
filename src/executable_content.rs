@@ -22,7 +22,7 @@ use crate::fsm::{
 };
 use crate::scxml_event_io_processor::SCXML_TARGET_INTERNAL;
 use crate::{get_global, Event, EventType};
-use crate::expression_parser::{ExpressionLexer, NumericToken, Token};
+use crate::expression_parser::{ExpressionLexer};
 
 pub const TARGET_SCXML_EVENT_PROCESSOR: &str = "http://www.w3.org/TR/scxml/#SCXMLEventProcessor";
 
