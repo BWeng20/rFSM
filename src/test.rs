@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
-#[cfg(feature = "xml")]
-use std::io::Read;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::sync::mpsc::Sender;

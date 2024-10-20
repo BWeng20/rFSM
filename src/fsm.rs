@@ -22,7 +22,7 @@ use std::thread::JoinHandle;
 use std::{fmt, thread};
 #[cfg(test)]
 #[cfg(feature = "Debug")]
-use std::{println as debug, println as error};
+use std::{println as debug};
 
 #[cfg(not(test))]
 use log::error;
@@ -3989,6 +3989,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "ECMAScript")]
     fn fsm_shall_exit() {
         // init_logging();
         println!("Creating The SM:");
