@@ -282,7 +282,7 @@ impl ExpressionLexer {
                         state = 1u8;
                     }
                     3 | 6 => {
-                        state = 2u8;
+                        state = 4u8;
                     }
                     _ => {}
                 }
@@ -331,15 +331,13 @@ impl ExpressionLexer {
                         return Token::Operator(OperatorToken::Minus);
                     }
                     _ => {
-                        return Token::Error(format!("Invalid character '{}' in number", c));
+                        self.push_back();
+                        break;
                     }
                 }
-            } else if Self::is_stop(c) {
-                self.push_back();
-                break;
             } else {
                 self.push_back();
-                return Token::Error(format!("Invalid character '{}' in number", c));
+                break;
             }
             self.buffer.push(c);
             c = self.next_char();
@@ -357,13 +355,18 @@ impl ExpressionLexer {
                 }
             }
             2 | 4 => {
-                let r = self.buffer.parse::<f64>();
-                return match r {
-                    Ok(v) => {
-                        Token::Number(NumericToken::Double(v))
-                    }
-                    Err(err) => {
-                        Token::Error(err.to_string())
+                if self.buffer.len() == 1 {
+                    // Special case '.'
+                    return Token::Separator('.');
+                } else {
+                    let r = self.buffer.parse::<f64>();
+                    return match r {
+                        Ok(v) => {
+                            Token::Number(NumericToken::Double(v))
+                        }
+                        Err(err) => {
+                            Token::Error(err.to_string())
+                        }
                     }
                 }
             }
@@ -402,8 +405,8 @@ impl ExpressionLexer {
         self.buffer.clear();
         let mut c = self.next_char();
 
-        // Start chars for a legal JSON Number (not '+', check the specs):
-        if Self::is_digit(c) || c == '-'  {
+        // Start chars for a legal Number ('+' and "." NOT in JSON):
+        if Self::is_digit(c) || c == '-' || c == '+' || c == '.' {
             return self.read_number(c);
         }
         loop
@@ -500,6 +503,7 @@ impl ExpressionLexer {
 }
 
 pub struct ExpressionData {
+    #[allow(dead_code)]
     pub methods : HashMap<String, ExpressionMethod>
 }
 
@@ -539,7 +543,7 @@ pub struct ExpressionParser {
 
 impl ExpressionParser {
 
-    pub fn parse( text : &str ) -> Box<dyn Expression> {
+    pub fn parse( _text : &str ) -> Box<dyn Expression> {
         todo!()
     }
 }
@@ -590,7 +594,7 @@ mod tests {
         // Sorry, no hex in json
         let n7 = l.next_token();
         println!("N7: {:?}", n7);
-        assert!( matches!(n7, Token::Error(_)));
+        assert!( matches!(n7, Token::Number(NumericToken::Integer(0))));
 
         let n8 = l.next_token();
         println!("N8: {:?}", n8);
@@ -643,33 +647,6 @@ mod tests {
     }
 
     #[test]
-    fn lexer_number_with_strings_result_in_error() {
-        let mut l = ExpressionLexer::new(" -123xXx 123Eabc".to_string());
-
-        let n1 = l.next_number();
-        println!("N1: {:?}", n1);
-        assert!( n1.is_err() );
-
-        let n2 = l.next_name();
-        println!("N2: {:?}", n2);
-        assert!( n2.is_ok() );
-        assert_eq!(n2.unwrap(), "xXx");
-
-        let n3 = l.next_name();
-        println!("N3: {:?}", n3);
-        assert!( n3.is_err() );
-
-        let n4 = l.next_name();
-        println!("N4: {:?}", n4);
-        assert!( n4.is_ok() );
-        assert_eq!(n4.unwrap(), "abc");
-
-        let n5 = l.next_token();
-        println!("N5: {:?}", n5);
-        assert_eq!(n5, Token::EOF);
-    }
-
-    #[test]
     fn lexer_can_parse_strings() {
         let mut l = ExpressionLexer::new(" \"123.2\" 'abc\\f' 'xx\\u0008xx'".to_string());
 
@@ -692,7 +669,7 @@ mod tests {
 
     #[test]
     fn lexer_can_parse_boolean() {
-        let mut l = ExpressionLexer::new(" true false 'true'".to_string());
+        let mut l = ExpressionLexer::new(" true false 'true' TRUE".to_string());
 
         let n1 = l.next_token();
         println!("N1: {:?}", n1);
@@ -702,9 +679,15 @@ mod tests {
         println!("N2: {:?}", n2);
         assert_eq!(n2, Token::Boolean(false));
 
+        // Check that a string "true" is still a string.
         let n3 = l.next_token();
         println!("N3: {:?}", n3);
         assert_eq!(n3, Token::TString("true".to_string()));
+
+        // Check that a true is case sensitive.
+        let n4 = l.next_token();
+        println!("N4: {:?}", n4);
+        assert_eq!(n4, Token::Identifier("TRUE".to_string()));
 
         let n4 = l.next_token();
         println!("N4: {:?}", n4);
@@ -715,10 +698,12 @@ mod tests {
     fn lexer_can_parse_null() {
         let mut l = ExpressionLexer::new(" null 'null'".to_string());
 
+        // Check that null is parsed.
         let n1 = l.next_token();
         println!("N1: {:?}", n1);
         assert_eq!(n1, Token::Null());
 
+        // Check that "null" as string is still a string.
         let n2 = l.next_token();
         println!("N2: {:?}", n2);
         assert_eq!(n2, Token::TString("null".to_string()));

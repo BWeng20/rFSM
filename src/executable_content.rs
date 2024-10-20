@@ -734,8 +734,9 @@ pub fn parse_duration_to_milliseconds(d: &str) -> i64 {
     } else {
         let mut exp = ExpressionLexer::new(d.to_string());
         let value_result = exp.next_number();
+        println!(" r:{:?}", value_result);
         if value_result.is_err() {
-            return 0;
+            return -1;
         }
         let Ok(unit) = exp.next_name() else { return 0; };
 

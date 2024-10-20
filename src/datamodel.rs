@@ -9,7 +9,7 @@ use crate::actions::ActionMap;
 use log::error;
 
 use crate::event_io_processor::EventIOProcessor;
-use crate::expression_parser::{ExpressionLexer};
+use crate::expression_parser::{ExpressionLexer, Token};
 use crate::fsm::{
     vec_to_string, CommonContent, Event, ExecutableContentId, Fsm, GlobalData, InvokeId, ParamPair, Parameter, StateId,
 };
@@ -465,27 +465,25 @@ impl Datamodel for NullDatamodel {
     /// The predicate must return 'true' if and only if that state is in the current state configuration.
     fn execute_condition(&mut self, script: &str) -> Result<bool, String> {
 
-        let mut exp = ExpressionLexer::new(script.to_string());
-        let mn = exp.next_name();
-        match mn
-        {
-            Ok(name) => {
-                todo!();
-                let value = "AAA";
-                match self.state_name_to_id.get(value) {
-                    None => Ok(false),
-                    Some(state_id) => {
-                        if self.global.lock().configuration.data.contains(state_id) {
-                            Ok(true)
-                        } else {
-                            Ok(false)
+        let mut lexer = ExpressionLexer::new(script.to_string());
+        if lexer.next_token() == Token::Identifier("In".to_string()) &&
+            lexer.next_token() == Token::Bracket('(') {
+            match lexer.next_token() {
+                Token::TString(state_name) |
+                Token::Identifier(state_name) => {
+                    if lexer.next_token() != Token::Bracket(')') {
+                        return Err("Matching ')' is missing".to_string());
+                    } else {
+                        return match self.state_name_to_id.get(&state_name) {
+                            None => Err(format!("Illegal state name '{}'", state_name)),
+                            Some(state_id) => Ok(self.global.lock().configuration.data.contains(state_id))
                         }
                     }
                 }
-
+                _ => {}
             }
-            Err(_) => { Err("Illegal format".to_string()) }
         }
+        return Err("Syntax error".to_string());
     }
 
     #[allow(non_snake_case)]

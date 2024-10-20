@@ -14,6 +14,10 @@ use std::{println as warn, println as error};
 #[cfg(feature = "Debug")]
 use std::println as debug;
 
+#[cfg(not(test))]
+#[cfg(feature = "Debug")]
+use log::debug;
+
 use crate::ArgOption;
 use boa_engine::context::ContextBuilder;
 use boa_engine::object::builtins::{JsArray, JsMap};
@@ -26,9 +30,6 @@ use boa_gc::{empty_trace, Finalize, Trace};
 
 #[cfg(not(test))]
 use log::{error, warn};
-
-#[cfg(feature = "Debug")]
-use log::debug;
 
 use crate::datamodel::{
     Data, DataStore, Datamodel, DatamodelFactory, GlobalDataArc, EVENT_VARIABLE_FIELD_DATA,
