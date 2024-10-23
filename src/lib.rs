@@ -53,8 +53,9 @@ pub mod tracer;
 pub mod remote_tracer;
 
 pub mod actions;
+pub mod expression_parser;
+pub mod expressions;
 pub mod test;
-mod expression_parser;
 
 #[cfg(feature = "Trace")]
 pub fn handle_trace(sender: &mut Sender<Box<Event>>, opt: &str, enable: bool) {

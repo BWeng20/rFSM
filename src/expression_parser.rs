@@ -1,21 +1,22 @@
 //! Implementation of a simple expression parser.
 
-use std::collections::HashMap;
+use crate::datamodel::Data;
+use crate::expressions::{ConstantExpression, Expression, ExpressionMethod, ExpressionVariable};
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
-use crate::datamodel::Data;
+use std::option::Option;
 
-#[derive(PartialEq,Debug)]
+#[derive(PartialEq, Debug)]
 pub enum NumericToken {
     Integer(i64),
-    Double(f64)
+    Double(f64),
 }
 
 impl NumericToken {
     pub fn as_double(&self) -> f64 {
         match self {
-            NumericToken::Integer(i) => { *i as f64 }
-            NumericToken::Double(d) => { *d }
+            NumericToken::Integer(i) => *i as f64,
+            NumericToken::Double(d) => *d,
         }
     }
 }
@@ -26,10 +27,15 @@ pub enum OperatorToken {
     Divide,
     Plus,
     Minus,
-    Less, LessEqual,
-    Greater, GreaterEqual,
-    Assign, Equal, NotEqual,
-    Modulo, Not
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
+    Assign,
+    Equal,
+    NotEqual,
+    Modulo,
+    Not,
 }
 
 #[derive(PartialEq, Debug)]
@@ -56,15 +62,13 @@ impl Display for Token {
 }
 
 pub struct ExpressionLexer {
-
-    text : Vec::<char>,
+    text: Vec<char>,
     pos: usize,
-    buffer: String
+    buffer: String,
 }
 
 impl ExpressionLexer {
-
-    pub fn new(text : String) -> Self{
+    pub fn new(text: String) -> Self {
         let mut chars = Vec::with_capacity(text.len());
         for c in text.chars() {
             chars.push(c);
@@ -72,13 +76,13 @@ impl ExpressionLexer {
         ExpressionLexer {
             text: chars,
             pos: 0,
-            buffer: String::with_capacity(100)
+            buffer: String::with_capacity(100),
         }
     }
 
-    fn is_stop(c : char) -> bool {
-        return Self::is_whitespace(c) ||
-        match c {
+    fn is_stop(c: char) -> bool {
+        return Self::is_whitespace(c)
+            || match c {
             '\0' | '.' | '!' | ',' | '\\' | ';' |
             // Operators
             '-' | '+' | '/' | ':' | '*' |
@@ -89,20 +93,17 @@ impl ExpressionLexer {
             '"' | '\'' => { true }
             _ => { false }
 
-        }
+        };
     }
 
-    fn is_string_delimiter(c : char) -> bool {
-
+    fn is_string_delimiter(c: char) -> bool {
         match c {
-            '\'' | '"' => {true}
-            _ => {false}
+            '\'' | '"' => true,
+            _ => false,
         }
-
     }
 
-    pub fn next_char(&mut self) -> char
-    {
+    pub fn next_char(&mut self) -> char {
         if self.pos < self.text.len() {
             let c = self.text[self.pos];
             self.pos += 1;
@@ -112,8 +113,7 @@ impl ExpressionLexer {
         }
     }
 
-    pub fn push_back(&mut self)
-    {
+    pub fn push_back(&mut self) {
         if self.pos > 0 {
             self.pos -= 1;
         }
@@ -122,7 +122,7 @@ impl ExpressionLexer {
     // Read a String.
     // delimiter - The delimiter
     // Escape sequences see String state-chart on JSON.org.
-    fn read_string(&mut self, delimiter : char) -> Token {
+    fn read_string(&mut self, delimiter: char) -> Token {
         let mut escape = false;
         let mut c;
         loop {
@@ -145,11 +145,9 @@ impl ExpressionLexer {
                     }
                     'r' => {
                         c = '\r';
-
                     }
                     't' => {
                         c = '\t';
-
                     }
                     'u' => {
                         // 4 hex digits
@@ -158,23 +156,23 @@ impl ExpressionLexer {
                             let c = self.next_char();
                             if Self::is_digit(c) {
                                 codepoint.push(c);
-                            }
-                            else {
+                            } else {
                                 return Token::Error("Illegal \\u sequence in String".to_string());
                             }
                         }
                         let cp = u32::from_str_radix(codepoint.as_str(), 16);
                         match cp {
-                            Ok(cpv) => {
-                                match char::from_u32(cpv) {
-                                    None => {
-                                        return Token::Error(format!("Illegal codepoint {} in \\u sequence {}", cpv, codepoint));
-                                    }
-                                    Some(cpc) => {
-                                        c = cpc;
-                                    }
+                            Ok(cpv) => match char::from_u32(cpv) {
+                                None => {
+                                    return Token::Error(format!(
+                                        "Illegal codepoint {} in \\u sequence {}",
+                                        cpv, codepoint
+                                    ));
                                 }
-                            }
+                                Some(cpc) => {
+                                    c = cpc;
+                                }
+                            },
                             Err(_err) => {
                                 return Token::Error(format!("Illegal \\u sequence {}", codepoint));
                             }
@@ -194,66 +192,46 @@ impl ExpressionLexer {
     }
 
     /// Read possible combinaed operators
-    fn read_operator(&mut self, first : char) -> Token {
-        Token::Operator(
-            match first {
-                '-' => { OperatorToken::Minus }
-                '+' => {OperatorToken::Plus}
-                '*' => {OperatorToken::Multiply}
-                ':' | '/' => {OperatorToken::Divide}
-                '%' => {OperatorToken::Modulo}
-                _ => {
-                    let second = self.next_char();
-                    if second == '=' {
-                        match first {
-                            '<' => {
-                                OperatorToken::LessEqual
-                            }
-                            '>' => {
-                                OperatorToken::GreaterEqual
-                            }
-                            '=' => {
-                                OperatorToken::Equal
-                            }
-                            '!' => {
-                                OperatorToken::NotEqual
-                            }
-                            _ => {
-                                // This method shall not be called with other chars.
-                                return Token::Error("Internal Error".to_string())
-                            }
+    fn read_operator(&mut self, first: char) -> Token {
+        Token::Operator(match first {
+            '-' => OperatorToken::Minus,
+            '+' => OperatorToken::Plus,
+            '*' => OperatorToken::Multiply,
+            ':' | '/' => OperatorToken::Divide,
+            '%' => OperatorToken::Modulo,
+            _ => {
+                let second = self.next_char();
+                if second == '=' {
+                    match first {
+                        '<' => OperatorToken::LessEqual,
+                        '>' => OperatorToken::GreaterEqual,
+                        '=' => OperatorToken::Equal,
+                        '!' => OperatorToken::NotEqual,
+                        _ => {
+                            // This method shall not be called with other chars.
+                            return Token::Error("Internal Error".to_string());
                         }
-                    } else {
-                        self.push_back();
-                        match first {
-                            '<' => {
-                                OperatorToken::Less
-                            }
-                            '>' => {
-                                OperatorToken::Greater
-                            }
-                            '=' => {
-                                OperatorToken::Assign
-                            }
-                            '!' => {
-                                OperatorToken::Not
-                            }
-                            _ => {
-                                // This method shall not be called with other chars.
-                                return Token::Error("Internal Error".to_string())
-                            }
+                    }
+                } else {
+                    self.push_back();
+                    match first {
+                        '<' => OperatorToken::Less,
+                        '>' => OperatorToken::Greater,
+                        '=' => OperatorToken::Assign,
+                        '!' => OperatorToken::Not,
+                        _ => {
+                            // This method shall not be called with other chars.
+                            return Token::Error("Internal Error".to_string());
                         }
                     }
                 }
-            })
+            }
+        })
     }
-
-
 
     // Read a JSON Number (see state chart at JSON.org).
     // c - The starting character.
-    fn read_number(&mut self, mut c : char) -> Token
-    {
+    fn read_number(&mut self, mut c: char) -> Token {
         // States:
         // 0: Init
         // 1: In fix-point part
@@ -265,7 +243,6 @@ impl ExpressionLexer {
 
         let mut state = 0u8;
         loop {
-
             if c == '.' {
                 match state {
                     0 | 1 | 5 => {
@@ -346,13 +323,9 @@ impl ExpressionLexer {
             1 => {
                 let r = self.buffer.parse::<i64>();
                 return match r {
-                    Ok(v) => {
-                        Token::Number(NumericToken::Integer(v))
-                    }
-                    Err(err) => {
-                        Token::Error(err.to_string())
-                    }
-                }
+                    Ok(v) => Token::Number(NumericToken::Integer(v)),
+                    Err(err) => Token::Error(err.to_string()),
+                };
             }
             2 | 4 => {
                 if self.buffer.len() == 1 {
@@ -361,16 +334,12 @@ impl ExpressionLexer {
                 } else {
                     let r = self.buffer.parse::<f64>();
                     return match r {
-                        Ok(v) => {
-                            Token::Number(NumericToken::Double(v))
-                        }
-                        Err(err) => {
-                            Token::Error(err.to_string())
-                        }
-                    }
+                        Ok(v) => Token::Number(NumericToken::Double(v)),
+                        Err(err) => Token::Error(err.to_string()),
+                    };
                 }
             }
-            3 | 6=> {
+            3 | 6 => {
                 return Token::Error("missing exponent in number".to_string());
             }
             5 => {
@@ -384,22 +353,21 @@ impl ExpressionLexer {
 
     // A much, much simpler variant instead of char.is_digit(10).
     #[inline(always)]
-    fn is_digit(c :char ) -> bool {
+    fn is_digit(c: char) -> bool {
         return c >= '0' && c <= '9';
     }
 
     // Check for a JSON whitespace.
     #[inline(always)]
-    fn is_whitespace(c :char ) -> bool {
+    fn is_whitespace(c: char) -> bool {
         match c {
             ' ' | '\n' | '\r' | '\t' => true,
-            _ => false
+            _ => false,
         }
     }
 
     /// Return the next token.
-    pub fn next_token(&mut self) -> Token
-    {
+    pub fn next_token(&mut self) -> Token {
         // at start of new symbol, eat all spaces
         self.eat_space();
         self.buffer.clear();
@@ -409,51 +377,39 @@ impl ExpressionLexer {
         if Self::is_digit(c) || c == '-' || c == '+' || c == '.' {
             return self.read_number(c);
         }
-        loop
-        {
-            if Self::is_stop(c)
-            {
+        loop {
+            if Self::is_stop(c) {
                 if self.buffer.len() == 0 {
                     if Self::is_string_delimiter(c) {
                         // At start of string
                         return self.read_string(c);
                     } else {
                         // return the current stop as symbol
-                        match c
-                        {
+                        match c {
                             '\0' => {
                                 return Token::EOF;
                             }
                             '+' | '-' | '*' | '<' | '>' | '=' | '%' | '/' | ':' | '!' => {
                                 return self.read_operator(c);
                             }
-                            '{' | '}' | '(' | ')' | '[' | ']'  => {
+                            '{' | '}' | '(' | ')' | '[' | ']' => {
                                 return Token::Bracket(c);
                             }
-                            _ =>
-                            {
+                            _ => {
                                 return Token::Separator(c);
                             }
                         }
                     }
-                } else  if c != '\0' {
+                } else if c != '\0' {
                     // handle this the next call
                     self.push_back();
                 }
                 return match self.buffer.as_str() {
-                    "true" => {
-                        Token::Boolean(true)
-                    }
-                    "false" => {
-                        Token::Boolean(false)
-                    }
-                    "null" => {
-                        Token::Null()
-                    }
-                    _ => {
-                        Token::Identifier(self.buffer.clone())
-                    }
-                }
+                    "true" => Token::Boolean(true),
+                    "false" => Token::Boolean(false),
+                    "null" => Token::Null(),
+                    _ => Token::Identifier(self.buffer.clone()),
+                };
             }
             // append until stop is found.
             self.buffer.push(c);
@@ -462,31 +418,21 @@ impl ExpressionLexer {
     }
 
     // Force next to a number, otherwise return Error.
-    pub fn next_number(&mut self) -> Result<NumericToken,String> {
+    pub fn next_number(&mut self) -> Result<NumericToken, String> {
         let t = self.next_token();
         match t {
-            Token::Number(e) => {
-                Ok(e)
-            }
-            Token::Error(s) => {
-                Err(s)
-            }
-            _ => {
-                Err("".to_string())
-            }
+            Token::Number(e) => Ok(e),
+            Token::Error(s) => Err(s),
+            _ => Err("".to_string()),
         }
     }
 
     // Force next to a Name, otherwise return Error.
-    pub fn next_name(&mut self) -> Result<String,()> {
+    pub fn next_name(&mut self) -> Result<String, ()> {
         let t = self.next_token();
         match t {
-            Token::Identifier(e) => {
-                Ok(e)
-            }
-            _ => {
-                Err(())
-            }
+            Token::Identifier(e) => Ok(e),
+            _ => Err(()),
         }
     }
 
@@ -498,56 +444,83 @@ impl ExpressionLexer {
         while self.has_next() && Self::is_whitespace(self.text[self.pos]) {
             self.pos += 1;
         }
-
     }
 }
 
-pub struct ExpressionData {
-    #[allow(dead_code)]
-    pub methods : HashMap<String, ExpressionMethod>
-}
-
-impl ExpressionData {
-
-}
-
-pub trait Expression {
-    fn execute(&self, data: &mut ExpressionData) -> Data;
-}
-
-pub type ExpressionMethodCall = fn(&ExpressionMethod, &mut ExpressionData) -> Data;
-
-pub struct ExpressionMethod {
-
-    pub arguments : Vec<Box<dyn Expression>>,
-    pub call : ExpressionMethodCall,
-}
-
-impl ExpressionMethod {
-    pub fn new(f : ExpressionMethodCall) -> ExpressionMethod {
-        ExpressionMethod{
-            arguments: Vec::new(),
-            call: f
-        }
-    }
-}
-
-impl Expression for ExpressionMethod {
-    fn execute(&self, data: &mut ExpressionData) -> Data {
-        (self.call)(&self, data)
-    }
-}
-
-pub struct ExpressionParser {
-}
+pub struct ExpressionParser {}
 
 impl ExpressionParser {
+    pub fn parse(text: String) -> Result<Box<dyn Expression>, String> {
+        let mut lexer = ExpressionLexer::new(text);
 
-    pub fn parse( _text : &str ) -> Box<dyn Expression> {
+        let mut methods: Vec<Box<ExpressionMethod>> = Vec::new();
+        let mut previous_identifier: Option<String> = None;
+        let mut sequence: Vec<Box<dyn Expression>> = Vec::new();
+        loop {
+            if previous_identifier.is_some() {
+                match lexer.next_token() {
+                    Token::Number(_) | Token::Identifier(_) | Token::TString(_) | Token::Boolean(_) | Token::Null() => {
+                    }
+                    Token::Operator(operator) => {}
+                    Token::Bracket(br) => match br {
+                        '(' => {}
+                        ')' => {
+                            let em = methods.pop();
+                            match em {
+                                None => {
+                                    return Result::Err(format!("Unexpected {}", br));
+                                }
+                                Some(e) => {
+                                    sequence.push(e);
+                                }
+                            }
+                        }
+                        _ => {
+                            return Result::Err(format!("Unexpected {}", br));
+                        }
+                    },
+                    Token::Separator(sep) => {}
+                    Token::Error(err) => {
+                        return Result::Err(err);
+                    }
+                    Token::EOF => {
+                        if let Some(id) = previous_identifier {
+                            sequence.push(Box::new(ExpressionVariable::new(id.as_str())));
+                        }
+                        break;
+                    }
+                }
+            } else {
+                match lexer.next_token() {
+                    Token::Number(number) => match number {
+                        NumericToken::Integer(v) => {
+                            sequence.push(Box::new(ConstantExpression::new(Data::Integer(v))));
+                        }
+                        NumericToken::Double(v) => {
+                            sequence.push(Box::new(ConstantExpression::new(Data::Double(v))));
+                        }
+                    },
+                    Token::Identifier(identifier) => {
+                        previous_identifier = Some(identifier.clone());
+                    }
+                    Token::TString(text) => {}
+                    Token::Boolean(b) => {}
+                    Token::Operator(operator) => {}
+                    Token::Bracket(br) => {}
+                    Token::Separator(sep) => {}
+                    Token::Null() => {}
+                    Token::Error(err) => {
+                        return Result::Err(err);
+                    }
+                    Token::EOF => {
+                        break;
+                    }
+                }
+            }
+        }
         todo!()
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -559,12 +532,12 @@ mod tests {
 
         let n1 = l.next_number();
         println!("N1: {:?}", n1);
-        assert!( n1.is_ok() );
+        assert!(n1.is_ok());
         assert_eq!(n1.unwrap().as_double(), 123f64);
 
         let n2 = l.next_number();
         println!("N2: {:?}", n2);
-        assert!( n2.is_ok() );
+        assert!(n2.is_ok());
         assert_eq!(n2.unwrap().as_double(), 345.123f64);
 
         // Leading "+" are not allowed in JSON. We will get this as operator.
@@ -578,23 +551,23 @@ mod tests {
 
         let n4 = l.next_number();
         println!("N4: {:?}", n4);
-        assert!( n4.is_ok() );
+        assert!(n4.is_ok());
         assert_eq!(n4.unwrap().as_double(), -123f64);
 
         let n5 = l.next_number();
         println!("N5: {:?}", n5);
-        assert!( n5.is_ok() );
+        assert!(n5.is_ok());
         assert_eq!(n5.unwrap().as_double(), 1e10f64);
 
         let n6 = l.next_number();
         println!("N6: {:?}", n6);
-        assert!( n6.is_ok() );
+        assert!(n6.is_ok());
         assert_eq!(n6.unwrap().as_double(), 1e10f64);
 
         // Sorry, no hex in json
         let n7 = l.next_token();
         println!("N7: {:?}", n7);
-        assert!( matches!(n7, Token::Number(NumericToken::Integer(0))));
+        assert!(matches!(n7, Token::Number(NumericToken::Integer(0))));
 
         let n8 = l.next_token();
         println!("N8: {:?}", n8);
@@ -611,38 +584,38 @@ mod tests {
 
         let n1 = l.next_name();
         println!("N1: {:?}", n1);
-        assert!( n1.is_ok() );
+        assert!(n1.is_ok());
         assert_eq!(n1.unwrap(), "abc");
 
         let n2 = l.next_name();
         println!("N2: {:?}", n2);
-        assert!( n2.is_ok() );
+        assert!(n2.is_ok());
         assert_eq!(n2.unwrap(), "efg");
 
         let n3 = l.next_token();
         println!("N3: {:?}", n3);
         if let Token::Separator(d) = n3 {
-            assert_eq!( d, '.' );
-        }  else {
+            assert_eq!(d, '.');
+        } else {
             assert!(false);
         }
 
         let n4 = l.next_name();
         println!("N4: {:?}", n4);
-        assert!( n4.is_ok() );
+        assert!(n4.is_ok());
         assert_eq!(n4.unwrap(), "xyz");
 
         let n5 = l.next_token();
         println!("N5: {:?}", n5);
         if let Token::Separator(d) = n5 {
-            assert_eq!( d, '.' );
-        }  else {
+            assert_eq!(d, '.');
+        } else {
             assert!(false);
         }
 
         let n6 = l.next_name();
         println!("N6: {:?}", n6);
-        assert!( n6.is_ok() );
+        assert!(n6.is_ok());
         assert_eq!(n6.unwrap(), "ZzZ");
     }
 
@@ -777,5 +750,4 @@ mod tests {
         println!(" {:?}", n);
         assert_eq!(n, Token::EOF);
     }
-
 }

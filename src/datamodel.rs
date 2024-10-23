@@ -464,20 +464,17 @@ impl Datamodel for NullDatamodel {
     /// It has the form 'In(id)', where id is the id of a state in the enclosing state machine.
     /// The predicate must return 'true' if and only if that state is in the current state configuration.
     fn execute_condition(&mut self, script: &str) -> Result<bool, String> {
-
         let mut lexer = ExpressionLexer::new(script.to_string());
-        if lexer.next_token() == Token::Identifier("In".to_string()) &&
-            lexer.next_token() == Token::Bracket('(') {
+        if lexer.next_token() == Token::Identifier("In".to_string()) && lexer.next_token() == Token::Bracket('(') {
             match lexer.next_token() {
-                Token::TString(state_name) |
-                Token::Identifier(state_name) => {
+                Token::TString(state_name) | Token::Identifier(state_name) => {
                     if lexer.next_token() != Token::Bracket(')') {
                         return Err("Matching ')' is missing".to_string());
                     } else {
                         return match self.state_name_to_id.get(&state_name) {
                             None => Err(format!("Illegal state name '{}'", state_name)),
-                            Some(state_id) => Ok(self.global.lock().configuration.data.contains(state_id))
-                        }
+                            Some(state_id) => Ok(self.global.lock().configuration.data.contains(state_id)),
+                        };
                     }
                 }
                 _ => {}
@@ -524,6 +521,12 @@ pub enum Data {
 impl Debug for Data {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self) // Display
+    }
+}
+
+impl Default for Data {
+    fn default() -> Self {
+        Data::Null()
     }
 }
 

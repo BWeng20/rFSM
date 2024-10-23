@@ -16,13 +16,13 @@ use log::debug;
 use log::{info, warn};
 
 use crate::datamodel::{Data, Datamodel, ToAny, SCXML_EVENT_PROCESSOR};
+use crate::expression_parser::ExpressionLexer;
 use crate::fsm::{
     opt_vec_to_string, vec_to_string, CommonContent, ExecutableContentId, Fsm, ParamPair, Parameter,
     PLATFORM_ID_COUNTER,
 };
 use crate::scxml_event_io_processor::SCXML_TARGET_INTERNAL;
 use crate::{get_global, Event, EventType};
-use crate::expression_parser::{ExpressionLexer};
 
 pub const TARGET_SCXML_EVENT_PROCESSOR: &str = "http://www.w3.org/TR/scxml/#SCXMLEventProcessor";
 
@@ -738,7 +738,9 @@ pub fn parse_duration_to_milliseconds(d: &str) -> i64 {
         if value_result.is_err() {
             return -1;
         }
-        let Ok(unit) = exp.next_name() else { return 0; };
+        let Ok(unit) = exp.next_name() else {
+            return 0;
+        };
 
         let mut v = value_result.unwrap().as_double();
         match unit.as_str() {

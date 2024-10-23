@@ -12,6 +12,9 @@ use std::hash::Hash;
 use std::ops::DerefMut;
 #[cfg(test)]
 use std::println as error;
+#[cfg(test)]
+#[cfg(feature = "Debug")]
+use std::println as debug;
 use std::slice::Iter;
 use std::str::FromStr;
 use std::string::ToString;
@@ -20,9 +23,6 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::{fmt, thread};
-#[cfg(test)]
-#[cfg(feature = "Debug")]
-use std::{println as debug};
 
 #[cfg(not(test))]
 use log::error;
