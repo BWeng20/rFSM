@@ -1,50 +1,46 @@
 //! Implementation of a simple expression parser.
 
 use crate::datamodel::Data;
-use std::collections::HashMap;
-use std::fmt::{Debug, Display};
-use std::option::Option;
+use std::fmt::Debug;
+use crate::fsm::GlobalData;
 
-#[derive(Default)]
-pub struct ExpressionData {
-    #[allow(dead_code)]
-    pub methods: HashMap<String, ExpressionMethod>,
-    pub data: HashMap<String, Data>,
-    pub left_expression: Data,
+pub trait Expression : Debug {
+    fn execute(&self, data: &mut GlobalData) -> Data;
 }
 
-impl ExpressionData {
-    pub fn get(&self, name: &str) -> Option<&Data> {
-        self.data.get(name)
-    }
-}
-
-pub trait Expression {
-    fn execute(&self, data: &mut ExpressionData);
-}
-
-pub type ExpressionMethodCall = fn(&ExpressionMethod, &mut ExpressionData) -> Data;
-
+#[derive(Debug)]
 pub struct ExpressionMethod {
     pub arguments: Vec<Box<dyn Expression>>,
-    pub call: ExpressionMethodCall,
+    pub method: String
 }
 
 impl ExpressionMethod {
-    pub fn new(f: ExpressionMethodCall) -> ExpressionMethod {
+    pub fn new(method: &str, arguments : Vec<Box<dyn Expression>> ) -> ExpressionMethod {
         ExpressionMethod {
-            arguments: Vec::new(),
-            call: f,
+            arguments,
+            method: method.to_string(),
         }
     }
 }
 
 impl Expression for ExpressionMethod {
-    fn execute(&self, data: &mut ExpressionData) {
-        data.left_expression = (self.call)(&self, data)
+    fn execute(&self, data: &mut GlobalData) -> Data {
+        let mut v = Vec::with_capacity(self.arguments.len());
+        for arg in &self.arguments {
+            v.push( arg.execute(data) );
+        }
+        match data.actions.lock().get(self.method.as_str() ) {
+            None => {
+                todo!()
+            }
+            Some(action) => {
+                action.execute( v.as_slice(), data).unwrap()
+            }
+        }
     }
 }
 
+#[derive(Debug)]
 pub struct ExpressionVariable {
     pub name: String,
 }
@@ -58,48 +54,72 @@ impl crate::expressions::ExpressionVariable {
 }
 
 impl Expression for crate::expressions::ExpressionVariable {
-    fn execute(&self, data: &mut ExpressionData) {
-        match data.get(self.name.as_str()) {
-            None => data.left_expression = Data::Null(),
+    fn execute(&self, data: &mut GlobalData) -> Data {
+        match data.environment.get(self.name.as_str()) {
+            None => Data::Null(),
             Some(d) => {
-                data.left_expression = d.clone();
+                d.clone()
             }
         }
     }
 }
 
-pub struct ConstantExpression {
+#[derive(Debug)]
+pub struct ExpressionConstant {
     pub data: Data,
 }
 
-impl ConstantExpression {
-    pub fn new(d: Data) -> ConstantExpression {
-        ConstantExpression { data: d }
+impl ExpressionConstant {
+    pub fn new(d: Data) -> ExpressionConstant {
+        ExpressionConstant { data: d }
     }
 }
 
-impl Expression for ConstantExpression {
-    fn execute(&self, data: &mut ExpressionData) {
-        data.left_expression = self.data.clone();
+impl Expression for ExpressionConstant {
+    fn execute(&self, _data: &mut GlobalData) -> Data {
+        self.data.clone()
     }
 }
 
-pub struct SubExpression {
-    pub sequence: Vec<Box<dyn Expression>>,
+#[derive(PartialEq, Debug, Clone)]
+#[repr(u8)]
+pub enum Operator {
+    Multiply,
+    Divide,
+    Plus,
+    Minus,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
+    Assign,
+    Equal,
+    NotEqual,
+    Modulo,
+    Not,
 }
 
-impl crate::expressions::SubExpression {
-    pub fn new() -> crate::expressions::SubExpression {
-        crate::expressions::SubExpression {
-            sequence: Vec::new(),
+#[derive(Debug)]
+pub struct ExpressionOperator {
+    pub operator : Operator,
+    pub left: Box<dyn Expression>,
+    pub right: Box<dyn Expression>,
+}
+
+impl ExpressionOperator {
+    pub fn new(op : Operator, left: Box<dyn Expression>, right: Box<dyn Expression>) -> ExpressionOperator {
+        ExpressionOperator {
+            left,
+            right,
+            operator : op
         }
     }
 }
 
-impl Expression for crate::expressions::SubExpression {
-    fn execute(&self, data: &mut ExpressionData) {
-        for e in &self.sequence {
-            e.execute(data);
-        }
+impl Expression for ExpressionOperator {
+    fn execute(&self, data: &mut GlobalData) -> Data {
+        let left_result = self.left.execute(data);
+        let right_result = self.right.execute(data);
+        left_result.operation( self.operator.clone(), &right_result)
     }
 }

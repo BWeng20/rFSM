@@ -4,14 +4,15 @@
 #![allow(clippy::doc_lazy_continuation)]
 #![allow(dead_code)]
 
-use crate::datamodel::{Data, GlobalDataArc};
+use crate::datamodel::Data;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
+use crate::fsm::GlobalData;
 
 /// Trait to inject custom actions into the datamodel.
 pub trait Action: Send {
     /// Executes the action.
-    fn execute(&self, arguments: &[Data], global: &GlobalDataArc) -> Result<Data, String>;
+    fn execute(&self, arguments: &[Data], global: &GlobalData) -> Result<Data, String>;
 
     /// Replacement for a generic "clone".
     fn get_copy(&self) -> Box<dyn Action>;

@@ -3676,7 +3676,7 @@ impl Default for DebugAction {
 }
 
 impl Action for DebugAction {
-    fn execute(&self, arguments: &[Data], _global: &GlobalDataArc) -> Result<Data, String> {
+    fn execute(&self, arguments: &[Data], _global: &GlobalData) -> Result<Data, String> {
         let mut i = 0;
         for data in arguments {
             i += 1;
@@ -3692,16 +3692,26 @@ impl Action for DebugAction {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-    use std::sync::mpsc::Sender;
 
     use crate::fsm::List;
     use crate::fsm::OrderedSet;
-    use crate::test::run_test_manual_with_send;
     #[cfg(feature = "Trace")]
     use crate::tracer::TraceMode;
-    use crate::{scxml_reader, Event, EventType};
 
+    #[cfg(feature = "ECMAScript")]
+    #[cfg( feature = "xml")]
+    use crate::scxml_reader;
+
+    #[cfg(feature = "ECMAScript")]
+    #[cfg( feature = "xml")]
+    use std::sync::mpsc::Sender;
+
+    #[cfg(feature = "ECMAScript")]
+    #[cfg( feature = "xml")]
+    use crate::Event;
+
+    #[cfg(feature = "ECMAScript")]
+    #[cfg(feature = "xml")]
     fn test_send(sender: &Sender<Box<Event>>, e: Event) {
         let _r = sender.send(Box::new(e));
     }
@@ -3990,6 +4000,7 @@ mod tests {
 
     #[test]
     #[cfg(feature = "ECMAScript")]
+    #[cfg(feature = "xml")]
     fn fsm_shall_exit() {
         // init_logging();
         println!("Creating The SM:");
