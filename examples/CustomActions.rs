@@ -1,9 +1,10 @@
 use log::{debug, error};
 use rfsm::actions::{Action, ActionWrapper};
-use rfsm::datamodel::{Data, GlobalDataArc};
+use rfsm::datamodel::Data;
 use rfsm::fsm_executor::FsmExecutor;
 use rfsm::init_logging;
 use std::process::exit;
+use rfsm::fsm::GlobalData;
 
 #[cfg(feature = "Trace")]
 use rfsm::tracer::TraceMode;
@@ -12,7 +13,7 @@ use rfsm::tracer::TraceMode;
 pub struct MyAction {}
 
 impl Action for MyAction {
-    fn execute(&self, arguments: &[Data], _global: &GlobalDataArc) -> Result<Data, String> {
+    fn execute(&self, arguments: &[Data], _global: &GlobalData) -> Result<Data, String> {
         let mut i = 0;
         println!("MyAction called with {} arguments:", arguments.len());
         for data in arguments {

@@ -293,6 +293,9 @@ impl ECMAScriptDatamodel {
                 }
                 JsValue::from(js_map)
             }
+            Data::Error(_error) => {
+                JsValue::Null
+            }
         }
     }
 
@@ -396,7 +399,7 @@ impl ECMAScriptDatamodel {
                 .unwrap()
                 .get_mut(action_name.as_str())
             {
-                action.execute(&arg_list, &fsm.global_data)
+                action.execute(&arg_list, &data)
             } else {
                 Err("Action not found".to_string())
             };
