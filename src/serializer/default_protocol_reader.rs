@@ -302,6 +302,10 @@ impl<R: Read> ProtocolReader<R> for DefaultProtocolReader<R> {
                 }
                 Data::Map(val)
             }
+            7 => {
+                let k = self.read_string();
+                Data::Error(k)
+            }
             _ => {
                 self.error(format!("Protocol error in data value: unknown variant {}", what).as_str());
                 self.ok = false;

@@ -114,6 +114,10 @@ impl<W: Write> ProtocolWriter<W> for DefaultProtocolWriter<W> {
                     self.write_data_value(v);
                 }
             }
+            Data::Error(s) => {
+                self.write_u8(7);
+                self.write_str(s.as_str());
+            }
             Data::Null() => {
                 self.write_u8(0);
             }

@@ -10,6 +10,7 @@ use log::error;
 
 use crate::event_io_processor::EventIOProcessor;
 use crate::expression_parser::{ExpressionLexer, Token};
+use crate::expressions::Operator;
 use crate::fsm::{
     vec_to_string, CommonContent, Event, ExecutableContentId, Fsm, GlobalData, InvokeId, ParamPair, Parameter, StateId,
 };
@@ -480,7 +481,7 @@ impl Datamodel for NullDatamodel {
                 _ => {}
             }
         }
-        return Err("Syntax error".to_string());
+        Err("Syntax error".to_string())
     }
 
     #[allow(non_snake_case)]
@@ -507,7 +508,7 @@ impl<T: Debug + 'static> ToAny for T {
 
 /// Data Variant used to handle data type-safe but
 /// Datamodel-agnostic way.
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum Data {
     Integer(i64),
     Double(f64),
@@ -516,7 +517,402 @@ pub enum Data {
     Array(Vec<Data>),
     Map(HashMap<String, Data>),
     Null(),
+    /// Special placeholder to indicate ab error
+    Error(String)
+
 }
+
+impl Display for Data {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Data::Integer(v) => {
+                write!(f, "{}", v)
+            }
+            Data::Double(v) => {
+                write!(f, "{}", v)
+            }
+            Data::String(v) => {
+                // TODO: Escape
+                write!(f, "'{}'", v)
+            }
+            Data::Boolean(v) => {
+                write!(f, "{}", v)
+            }
+            Data::Array(a) => {
+                write!(f, "{}", vec_to_string(a))
+            }
+            Data::Map(m) => {
+                let mut b = String::with_capacity(100);
+                b.push('{');
+                let mut first = true;
+                for (key, data) in m {
+                    if first {
+                        first = false;
+                    } else {
+                        b.push(',');
+                    }
+                    b.push('\'');
+                    // TODO: Escape
+                    b.push_str( key );
+                    b.push_str("':");
+                    b.push_str(data.to_string().as_str())
+                }
+                b.push('}');
+                write!(f, "{}", b)
+            }
+            Data::Null() => {
+                write!(f, "null")
+            }
+            Data::Error(err) => {
+                write!(f, "Error {}", err)
+            }
+        }
+    }
+}
+
+impl Data {
+
+    fn operation_numeric( op : Operator, right : f64, left : f64) -> Data {
+        Data::Double(
+            match op {
+                Operator::Assign |
+                Operator::Not => {
+                    return Data::Error("Operation not possible for numbers".to_string());
+                }
+                Operator::Modulo => {
+                    left % right
+                }
+                Operator::Multiply => {
+                    left * right
+                }
+                Operator::Divide => {
+                    left / right
+                }
+                Operator::Plus => {
+                    left + right
+                }
+                Operator::Equal => {
+                    return Data::Boolean( left == right);
+                }
+                Operator::NotEqual => {
+                    return Data::Boolean( left != right);
+                }
+                Operator::Minus => {
+                    left - right
+                }
+                Operator::Less => {
+                    return Data::Boolean( left < right);
+                }
+                Operator::LessEqual => {
+                    return Data::Boolean( left <= right);
+                }
+                Operator::Greater => {
+                    return Data::Boolean( left > right);
+                }
+                Operator::GreaterEqual => {
+                    return Data::Boolean( left >= right);
+                }
+            })
+    }
+
+    pub fn operation(&self, op : Operator, right : &Data) -> Data {
+        if let Data::Null() = right {
+            return Data::Null();
+        } else if let Data::Error(err) = right {
+            return Data::Error(err.clone());
+        } else if let Data::String(right_content) = right {
+            // If right is a string, force left also to be a string
+            if let Data::String(s) = self {
+                return Data::String(format!("{}{}", s, right_content));
+            } else {
+                return Data::String(self.to_string()).operation(op, right);
+            }
+        }
+      match self {
+         Data::Integer(self_content) => {
+             if let Data::Integer(right_content) = right {
+                 // Pure integer arithmetic
+                 let left = *self_content;
+                 let right = *right_content;
+                 Data::Integer(
+                     match op {
+                         Operator::Assign |
+                         Operator::Not => {
+                             return Data::Error("Operation not possible for integer".to_string());
+                         }
+                         Operator::Modulo => {
+                             left % right
+                         }
+                         Operator::Multiply => {
+                             left * right
+                         }
+                         Operator::Divide => {
+                             left / right
+                         }
+                         Operator::Plus => {
+                             left + right
+                         }
+                         Operator::Equal => {
+                             return Data::Boolean( left == right);
+                         }
+                         Operator::NotEqual => {
+                             return Data::Boolean( left != right);
+                         }
+                         Operator::Minus => {
+                             left - right
+                         }
+                         Operator::Less => {
+                             return Data::Boolean( left < right);
+                         }
+                         Operator::LessEqual => {
+                             return Data::Boolean( left <= right);
+                         }
+                         Operator::Greater => {
+                             return Data::Boolean( left > right);
+                         }
+                         Operator::GreaterEqual => {
+                             return Data::Boolean( left >= right);
+                         }
+                     })
+             } else if right.is_numeric()
+             {
+                 // Right is some typ that can be converted
+                 Self::operation_numeric(op, *self_content as f64, right.as_number())
+             } else {
+                 Data::Error("Incompatible Datatypes".to_string())
+             }
+         }
+         Data::Double(self_content) => {
+             if right.is_numeric()
+             {
+                 // Right is some typ that can be converted
+                 Self::operation_numeric(op, *self_content, right.as_number())
+             } else {
+                 Data::Error("Incompatible Datatypes".to_string())
+             }
+         }
+         Data::String(self_content) => {
+             match op {
+                 Operator::Not |
+                 Operator::Modulo |
+                 Operator::Assign |
+                 Operator::Multiply |
+                 Operator::Divide => {
+                     Data::Error("Operation not possible for strings".to_string())
+                 }
+                 Operator::Plus => {
+                     let mut r = self_content.clone();
+                     r.push_str(right.to_string().as_str());
+                     Data::String(r)
+                 }
+                 Operator::Equal => {
+                     Data::Boolean( (*self_content).eq(&right.to_string()))
+                 }
+                 Operator::NotEqual => {
+                     Data::Boolean( (*self_content).ne(&right.to_string()))
+                 }
+                 Operator::Minus |
+                 Operator::Less |
+                 Operator::LessEqual |
+                 Operator::Greater |
+                 Operator::GreaterEqual => {
+                     Data::Error("Operation not yet supported for strings".to_string())
+                 }
+             }
+         }
+         Data::Boolean(self_content) => {
+             if let Data::Boolean(right_content) = right {
+                 match op {
+                     Operator::Not => {
+                         Data::Boolean(!right_content)
+                     }
+                     Operator::Modulo |
+                     Operator::Assign |
+                     Operator::Multiply |
+                     Operator::Divide => {
+                         Data::Error("Operation not possible for boolean".to_string())
+                     }
+                     Operator::Plus => {
+                         Data::Boolean( *self_content && *right_content)
+                     }
+                     Operator::Equal => {
+                         Data::Boolean( *self_content == *right_content)
+                     }
+                     Operator::NotEqual => {
+                         Data::Boolean( *self_content != *right_content)
+                     }
+                     Operator::Minus |
+                     Operator::Less |
+                     Operator::LessEqual |
+                     Operator::Greater |
+                     Operator::GreaterEqual => {
+                         Data::Error("Operation not yet supported for boolean".to_string())
+                     }
+                 }
+             } else {
+                 Data::Error("Incompatible Datatypes".to_string())
+             }
+         }
+
+         Data::Array(self_content) => {
+             match op {
+                 Operator::Not |
+                 Operator::Modulo |
+                 Operator::Assign |
+                 Operator::Multiply |
+                 Operator::Divide => {
+                     Data::Error("Operation not possible for arrays".to_string())
+                 }
+                 Operator::Plus => {
+                     if let Data::Array(right_content) = right {
+                         let mut sum: Vec<Data> = Vec::with_capacity(self_content.len() + right_content.len());
+                         sum.extend(self_content.clone());
+                         sum.extend(right_content.clone());
+                         Data::Array(sum)
+                     } else {
+                         Data::Error("Incompatible Datatypes".to_string())
+                     }
+                 }
+                 Operator::Minus |
+                 Operator::Less |
+                 Operator::LessEqual |
+                 Operator::Greater |
+                 Operator::GreaterEqual |
+                 Operator::Equal |
+                 Operator::NotEqual => {
+                     Data::Error("Operation not yet supported for arrays".to_string())
+                 }
+             }
+         }
+
+         Data::Map(self_content) => {
+             match op {
+                 Operator::Not |
+                 Operator::Modulo |
+                 Operator::Assign |
+                 Operator::Multiply |
+                 Operator::Divide => {
+                     Data::Error("Operation not possible for maps".to_string())
+                 }
+                 Operator::Plus => {
+                     if let Data::Map(right_content) = right {
+                         let mut sum: HashMap<String, Data> = HashMap::with_capacity(self_content.len() + right_content.len());
+                         for (key, data) in self_content {
+                             sum.insert(key.clone(), data.clone());
+                         }
+                         for (key, data) in right_content {
+                             sum.insert(key.clone(), data.clone());
+                         }
+                         Data::Map(sum)
+                     } else {
+                         Data::Error("Incompatible Datatypes".to_string())
+                     }
+                 }
+                 Operator::Minus |
+                 Operator::Less |
+                 Operator::LessEqual |
+                 Operator::Greater |
+                 Operator::GreaterEqual |
+                 Operator::Equal |
+                 Operator::NotEqual => {
+                     Data::Error("Operation not yet supported for maps".to_string())
+                 }
+             }
+         }
+         Data::Null() => {
+             match op {
+                 Operator::Not |
+                 Operator::Modulo |
+                 Operator::Assign |
+                 Operator::Multiply |
+                 Operator::Minus |
+                 Operator::Less |
+                 Operator::LessEqual |
+                 Operator::Greater |
+                 Operator::GreaterEqual |
+                 Operator::Plus |
+                 Operator::Divide => {
+                     Data::Null()
+                 }
+                 Operator::Equal => {
+                    Data::Boolean( matches!(right, Data::Null() ) )
+                 }
+                 Operator::NotEqual => {
+                     Data::Boolean( !matches!(right, Data::Null() ))
+                 }
+             }
+         }
+         Data::Error(e) => {
+             Data::Error(e.clone())
+         }
+      }
+    }
+
+    pub fn as_number(&self) -> f64 {
+        match self {
+            Data::Integer(v) => {
+                *v as f64
+            }
+            Data::Double(v) => {
+                *v
+            }
+            Data::String(s) => {
+                s.parse::<f64>().unwrap_or({
+                    0f64
+                })
+            }
+            Data::Boolean(b) => {
+                if *b {
+                    1f64
+                } else {
+                    0f64
+                }
+            }
+            Data::Array(a) => {
+                a.len() as f64
+            }
+            Data::Map(a) => {
+                a.len() as f64
+            }
+            Data::Null() => {
+                0f64
+            }
+            Data::Error(_) => {
+                0f64
+            }
+        }
+    }
+
+    pub fn is_numeric(&self) -> bool {
+        match self {
+            Data::Integer(_) => {
+                true
+            }
+            Data::Double(_) => {
+                true
+            }
+            Data::String(_) => {
+                false
+            }
+            Data::Boolean(_) => {
+                false
+            }
+            Data::Array(_) => {
+                false
+            }
+            Data::Map(_) => {
+                false
+            }
+            Data::Null() => {
+                true
+            }
+            Data::Error(_) => {
+                false
+            }
+        }
+    }
+}
+
 
 impl Debug for Data {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -527,34 +923,6 @@ impl Debug for Data {
 impl Default for Data {
     fn default() -> Self {
         Data::Null()
-    }
-}
-
-impl Display for Data {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match &self {
-            Data::String(v) => {
-                write!(f, "'{}'", v)
-            }
-            Data::Integer(v) => {
-                write!(f, "{}", v)
-            }
-            Data::Double(v) => {
-                write!(f, "{}", v)
-            }
-            Data::Boolean(v) => {
-                write!(f, "{}", v)
-            }
-            Data::Array(v) => {
-                write!(f, "{}", vec_to_string(v))
-            }
-            Data::Map(v) => {
-                write!(f, "{:?}", v)
-            }
-            Data::Null() => {
-                write!(f, "Null")
-            }
-        }
     }
 }
 
