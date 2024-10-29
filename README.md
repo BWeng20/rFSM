@@ -29,23 +29,27 @@ See [SW Design](SW_Design.md)
 
 ## Crate Features
 
-| Name                      | Description                                          | Related crates                                            |
-|---------------------------|------------------------------------------------------|-----------------------------------------------------------|
-| ECMAScript                | Adds an EMCAScript datamodel implementation.         | boa_engine                                                |
-| EnvLog                    | The crate "env_log" is used as "log" implementation. | env_log                                                   |
-| BasicHttpEventIOProcessor | Adds an implementation of BasicHttpEventIOProcessor  | hyper, http-body-util, hyper-util, tokio, form_urlencoded |
-| json-config               | The test tool can read configurations in JSON.       | serde_json                                                |
-| yaml-config               | The test tool can read configurations in YAML.       | yaml-rust                                                 |
-| Trace_Method              | Enables tracing of methods calls in the FSM.         |                                                           |
-| Trace_State               | Enables tracing of state changes in the FSM.         |                                                           |
-| Trace_Event               | Enables tracing of events in the FSM.                |                                                           |
-| TraceServer               | Enables Remote Tracer Server.                        |                                                           |
-| xml                       | Enables reading SCXML (xml) files.                   | quick-xml, reqwest                                        |
-| Debug_Reader              | Enables debug output in the SCXML reader (a lot).    |                                                           |
-| Debug                     | Enables additional debug (to fnd errors).            |                                                           |
+| Name                      | Description                                                              | Related crates                                            | Size in Release Build |
+|---------------------------|--------------------------------------------------------------------------|-----------------------------------------------------------|-----------------------|
+| ECMAScript                | Adds an EMCAScript datamodel implementation.                             | boa_engine                                                | + ~ 10.25 MB          |
+| RfsmExpressionModel       | Adds a datamodel implementation bases on the internal Expression-Engine. |                                                           | + ~ 0.09 MB           |
+| xml                       | Enables reading SCXML (xml) files.                                       | quick-xml, reqwest                                        | + ~ 2,5 MB            |
+| serializer                | Read/Writes FSMs in a property binary format - as alternative to xml.    |                                                           | + ~ 0.1 MB            |
+| BasicHttpEventIOProcessor | Adds an implementation of BasicHttpEventIOProcessor                      | hyper, http-body-util, hyper-util, tokio, form_urlencoded | _- not finished -_    |
+| json-config               | The test tool can read configurations in JSON.                           | serde_json                                                | + ~ 0.003 MB          |
+| yaml-config               | The test tool can read configurations in YAML.                           | yaml-rust                                                 | - ~ 0.001 MB          |
+| EnvLog                    | The crate "env_log" is used as "log" implementation.                     | env_log                                                   | + ~ 1.21 MB           |
+| Trace_Method              | Enables tracing of methods calls in the FSM.                             |                                                           | [^1]                  |
+| Trace_State               | Enables tracing of state changes in the FSM.                             |                                                           | [^1]                  |
+| Trace_Event               | Enables tracing of events in the FSM.                                    |                                                           | [^1]                  |
+| TraceServer               | Enables Remote Tracer Server.                                            |                                                           | _- not finished -_    |
+| Debug_Reader              | Enables debug output in the SCXML reader (a lot).                        |                                                           | _don't use it!_       |
+| Debug                     | Enables additional debug (to fnd errors).                                |                                                           | _don't use it!_       |
 
 The trace options <i>Trace_xxx</i> still needed to be activated during runtime by settings the trace-mode.
 If none of the <i>Trace_xxx</i> features are used, "Tracer" module is completely removed.
+
+[^1]: If any of the "Trace_XXXX" features is turned on, the release build will get ~ 0.03 MB larger. 
 
 ## Tracer
 
@@ -70,7 +74,7 @@ Must simpler is to use the module "Action". You find examples how to use this.
 ### Datamodel
 
 For details about the Datamodel-concept in SCXML see the W3C documentation.<br/>
-This lib provides an implementation of the EMCAScript-Datamodel, but you can implement
+This lib provides some implementations of the Datamodel, but you can implement
 other models as well.
 
 The Datamodel in SCXML is responsible to execute code and expressions. Custom business logic
@@ -82,6 +86,14 @@ one binary.
 
 To add new data-models, use function `rfsm::fsm::register_datamodel`.
 
+### Provided Datamodel Implementations
+
++ EMCAScript-Datamodel, use `datamodel="ecmascript"`. Available if feature _"ECMAScript"_ is turned on.
++ The Null-Datamodel, use `datamodel="null"`
++ Internal Expression Engine Datamodel, use `datamodel="rfsm-expression"`. Available if feature _"RfsmExpressionModel"_ is turned on.
+
+As the EMCAScript-Datamodel is based on boa-engine, it result is a huge binary. 
+If you need only basic logic in your scripts, use "rfsm-expression" instead.
 
 ### Custom Actions
 

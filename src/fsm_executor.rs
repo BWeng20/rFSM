@@ -3,7 +3,9 @@
 extern crate core;
 
 use std::collections::HashMap;
+#[cfg(feature = "serializer")]
 use std::fs::File;
+#[cfg(feature = "serializer")]
 use std::io::BufReader;
 
 use std::path::PathBuf;
@@ -157,9 +159,12 @@ impl FsmExecutor {
         invoke_id: &InvokeId,
         #[cfg(feature = "Trace")] trace: TraceMode,
     ) -> Result<ScxmlSession, String> {
+        #[allow(unused_variables)]
         let extension = uri.rsplit('.').next().unwrap_or_default();
 
-        let mut sm = Err("".to_string());
+        #[allow(unused_variables)]
+        #[allow(unused_mut)]
+        let mut sm : Result<Box<Fsm>, String> = Err("".to_string());
 
         // Use reader to parse the scxml file:
         #[cfg(feature = "xml")]
