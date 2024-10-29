@@ -22,8 +22,9 @@ name = "rfsm"
 path = "src/lib.rs"
 
 [features]
-default = [ "json-config", "serializer", "xml" ]
+default = [ "json-config", "serializer", "xml", "RfsmExpressionModel" ]
 ECMAScript = ["boa_engine", "boa_gc"]
+RfsmExpressionModel = []
 BasicHttpEventIOProcessor = ["hyper", "http-body-util", "hyper-util", "form_urlencoded"]
 yaml-config = ["yaml-rust"]
 json-config = ["serde", "serde_json", "serde/serde_derive"]

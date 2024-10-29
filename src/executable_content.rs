@@ -16,7 +16,7 @@ use log::debug;
 use log::{info, warn};
 
 use crate::datamodel::{Data, Datamodel, ToAny, SCXML_EVENT_PROCESSOR};
-use crate::expression_parser::ExpressionLexer;
+use crate::expression_engine::parser::ExpressionLexer;
 use crate::fsm::{
     opt_vec_to_string, vec_to_string, CommonContent, ExecutableContentId, Fsm, ParamPair, Parameter,
     PLATFORM_ID_COUNTER,

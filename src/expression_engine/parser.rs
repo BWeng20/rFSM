@@ -1,10 +1,14 @@
 //! Implementation of a simple expression parser.
 
 use crate::datamodel::Data;
-use crate::expressions::{ExpressionConstant, Expression, ExpressionMethod, ExpressionVariable, Operator, ExpressionOperator};
+use crate::expression_engine::expressions::{ExpressionConstant,
+                                            Expression, ExpressionMethod, ExpressionVariable, Operator,
+                                            ExpressionOperator, ExpressionMemberAccess,
+                                            get_expression_as, Context, ExpressionAssign};
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
-use crate::fsm::{GlobalData, vec_to_string};
+use std::ops::Deref;
+use crate::fsm::{vec_to_string};
 
 /// Numeric types.
 #[derive(PartialEq, Debug)]
@@ -491,16 +495,16 @@ impl ExpressionParser {
 
     /// Parses and executes an expression.\
     /// If possible, please use "parse" and re-use the parsed expressions.
-    pub fn execute(text: String, data: &mut GlobalData) -> Result<Data,String> {
+    pub fn execute(text: String, context: &mut Context) -> Result<Data,String> {
         let r = Self::parse(text);
         match r {
             Ok(v) => {
-                let d = v.execute(data);
-                if let Data::Error(err) = d {
+                let d = v.execute(context).get_value(context);
+                if let Err(err) = d {
                     // Simplify error handling.
-                    Err(err)
+                    Err(err.clone())
                 } else {
-                    Ok(d)
+                    Ok(d.unwrap())
                 }
             }
             Err(err) => {
@@ -601,6 +605,8 @@ impl ExpressionParser {
                     if stops.contains(sep) {
                         stop = *sep;
                         break;
+                    } else if *sep == '.' {
+                        stack.push( ExpressionParserItem::SToken(Token::Separator('.')));
                     }
                 }
                 Token::Error(err) => {
@@ -610,6 +616,35 @@ impl ExpressionParser {
         }
         let expression  = Self::stack_to_expression(&mut stack)?;
         Ok((stop, expression))
+    }
+
+    /// Removes both neighbours of the item at the index, then call the function with the
+    /// neighbours and replace the item at the index with the result.\
+    /// If the operation fails, all items (at index and neighbours) are removed.\
+    /// Neighbours must be ExpressionParserItem::SExpression.
+    fn fold_stack_at<F>(stack: &mut Vec<ExpressionParserItem>,  idx : usize, f : F ) -> bool where
+        F : Fn(Box<dyn Expression>, Box<dyn Expression> ) -> Result<Box<dyn Expression>, String>
+    {
+        if idx > 0 && (idx+1) < stack.len() {
+            let right = stack.remove(idx + 1);
+            stack.remove(idx);
+            let left = stack.remove(idx - 1);
+
+            if let ExpressionParserItem::SExpression(re) = right {
+                if let ExpressionParserItem::SExpression(le) = left {
+                    match f(le, re) {
+                        Ok(expression) => {
+                            stack.insert(idx - 1, ExpressionParserItem::SExpression(expression));
+                            return true;
+                        }
+                        Err(_err) => {
+                            return false
+                        }
+                    }
+                }
+            }
+        }
+        false
     }
 
     fn stack_to_expression(stack: &mut Vec<ExpressionParserItem>) -> Result<Box<dyn Expression>,String>  {
@@ -629,6 +664,19 @@ impl ExpressionParser {
                         Token::Identifier(identifier) => {
                             let ex = Box::new(ExpressionVariable::new(identifier));
                             stack[si] = ExpressionParserItem::SExpression(ex);
+                        }
+                        Token::Separator(s) => {
+                            match *s {
+                                '.' => {
+                                    if  2 < best_idx_prio {
+                                        best_idx = si;
+                                        best_idx_prio = 2;
+                                    }
+                                }
+                                _ => {
+                                    panic!("Internal error")
+                                }
+                            }
                         }
                         Token::Operator(operator) => {
                             let prio = match operator {
@@ -661,7 +709,8 @@ impl ExpressionParser {
         }
         if best_idx_prio < 0xffu8 {
             let mut op = None;
-            if let ExpressionParserItem::SToken(Token::Operator(op_t)) = stack.get(best_idx).unwrap() {
+            let si = stack.get(best_idx).unwrap();
+            if let ExpressionParserItem::SToken(Token::Operator(op_t)) = si {
                 op = Some(op_t.clone());
             }
             if let Some(op) = op {
@@ -673,25 +722,43 @@ impl ExpressionParser {
                     Operator::LessEqual |
                     Operator::Greater |
                     Operator::GreaterEqual |
-                    Operator::Assign |
                     Operator::Equal |
                     Operator::NotEqual |
                     Operator::Modulo |
                     Operator::Multiply => {
-                        if best_idx > 0 && (best_idx+1) < stack.len() {
-                            let right = stack.remove(best_idx+1);
-                            stack.remove(best_idx);
-                            let left = stack.remove(best_idx-1);
-
-                            if let ExpressionParserItem::SExpression(re) = right {
-                                if let ExpressionParserItem::SExpression(le) = left {
-                                    stack.insert(best_idx - 1, ExpressionParserItem::SExpression(Box::new(ExpressionOperator::new(op.clone(), le, re))));
-                                    return Self::stack_to_expression(stack);
-                                }
-                            }
+                        if Self::fold_stack_at(stack, best_idx, |le : Box<dyn Expression>,re :Box<dyn Expression>|
+                                            -> Result<Box<dyn Expression>, String> {
+                            Ok(Box::new(ExpressionOperator::new(op.clone(), le, re)))
+                        }) {
+                            return Self::stack_to_expression(stack);
                         }
                     }
-                    Operator::Not => {}
+                    Operator::Assign => {
+                        if Self::fold_stack_at(stack, best_idx, |le : Box<dyn Expression>,re :Box<dyn Expression>|
+                                                                 -> Result<Box<dyn Expression>, String> {
+                            Ok(Box::new(ExpressionAssign::new(le, re)))
+                        }) {
+                            return Self::stack_to_expression(stack);
+                        }
+                    }
+                    Operator::Not => {
+                        todo!()
+                    }
+                }
+            } else if let ExpressionParserItem::SToken(Token::Separator(_)) = si {
+                if best_idx > 0 && (best_idx+1) < stack.len() && Self::fold_stack_at(stack, best_idx, |le : Box<dyn Expression>,re :Box<dyn Expression>|
+                                                          -> Result<Box<dyn Expression>, String> {
+                        match get_expression_as::<ExpressionVariable>(re.deref())
+                        {
+                            Some(e) => {
+                                Ok(Box::new(ExpressionMemberAccess::new(le, e.name.clone())))
+                            }
+                            None => {
+                                Err("No Identifier on right side of '.'".to_string())
+                            }
+                        }
+                    }) {
+                    return Self::stack_to_expression(stack);
                 }
             }
         } else  {
@@ -708,9 +775,10 @@ impl ExpressionParser {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use crate::datamodel::Data;
-    use crate::expression_parser::{ExpressionLexer, ExpressionParser, NumericToken, Operator, Token};
-    use crate::fsm::GlobalData;
+    use crate::expression_engine::expressions::{Context, ExpressionResult};
+    use crate::expression_engine::parser::{ExpressionLexer, ExpressionParser, NumericToken, Operator, Token};
 
     #[test]
     fn can_parse_numbers() {
@@ -939,38 +1007,43 @@ mod tests {
 
     #[test]
     fn parser_can_parse_a_simple_expression_without_identifiers() {
-        let mut data = GlobalData::new();
+        let mut data = Context::new();
 
         let r = ExpressionParser::parse("12 * 3.4".to_string()).unwrap();
+        print!("Parsed: {:?}", r);
         let result_data = r.execute(&mut data);
-        println!("Parsed: {:?} => {:?}", r, result_data);
-        assert!( result_data.eq( &Data::Double(12f64 * 3.4f64)) );
+        println!(" => {:?}", result_data);
+        assert!( result_data.eq( &ExpressionResult::Data(Data::Double(12f64 * 3.4f64))) );
 
         let r = ExpressionParser::parse("(12 * 2)".to_string()).unwrap();
+        print!("Parsed: {:?}", r);
         let result_data = r.execute(&mut data);
-        println!("Parsed: {:?} => {:?}", r, result_data);
-        assert!( result_data.eq( &Data::Integer(24)) );
+        println!(" => {:?}", result_data);
+        assert!( result_data.eq( &ExpressionResult::Data(Data::Integer(24))) );
 
         let r = ExpressionParser::parse("(1 * 2) + (12 * 2)".to_string()).unwrap();
+        print!("Parsed: {:?}", r);
         let result_data = r.execute(&mut data);
-        println!("Parsed: {:?} => {:?}", r, result_data);
-        assert!( result_data.eq( &Data::Integer(26)) );
+        println!(" => {:?}", result_data);
+        assert!( result_data.eq( &ExpressionResult::Data(Data::Integer(26))) );
     }
 
     #[test]
     fn expressions_prioritize_multiplication_division_operations() {
-        let mut data = GlobalData::new();
+        let mut data = Context::new();
 
         let r = ExpressionParser::parse("12 + 2 * 4".to_string()).unwrap();
+        print!("Parsed: {:?}", r);
         let result_data = r.execute(&mut data);
-        println!("Parsed: {:?} => {:?}", r, result_data);
-        assert!( result_data.eq( &Data::Integer( 12 + (2 * 4))) );
+        println!(" => {:?}", result_data);
+        assert!( result_data.eq( &ExpressionResult::Data(Data::Integer( 12 + (2 * 4)))) );
 
         // Check that forced "()" work
         let r = ExpressionParser::parse("(12 + 2) * 4".to_string()).unwrap();
+        print!("Parsed: {:?}", r);
         let result_data = r.execute(&mut data);
-        println!("Parsed: {:?} => {:?}", r, result_data);
-        assert!( result_data.eq( &Data::Integer( (12 + 2) * 4)) );
+        println!(" => {:?}", result_data);
+        assert!( result_data.eq( &ExpressionResult::Data(Data::Integer( (12 + 2) * 4))) );
     }
 
     #[test]
@@ -980,4 +1053,44 @@ mod tests {
         let r = ExpressionParser::parse("method(1,2,3,4)".to_string()).unwrap();
         println!("Parsed: {:?}", r);
     }
+
+    #[test]
+    fn can_parse_members() {
+        let r1 = ExpressionParser::parse("A.b".to_string()).unwrap();
+        println!("Parsed: {:?}", r1);
+
+        let r2 = ExpressionParser::parse("A.b.c".to_string()).unwrap();
+        println!("Parsed: {:?}", r2);
+
+        let mut data = Context::new();
+        let mut hs1 = HashMap::new();
+        let mut hs2 = HashMap::new();
+        hs2.insert("c".to_string(), Data::String("hello".to_string()));
+        hs1.insert("b".to_string(), Data::Map(hs2));
+
+        data.values.insert( "A".to_string(), Data::Map(hs1));
+        let rs1 = r1.execute(&mut data);
+        println!( "==> {:?}", rs1);
+        assert!( if let Data::Map(_x) = rs1.get_value(&data).unwrap() { true } else {false } );
+
+        let rs2 = r2.execute(&mut data);
+        println!( "==> {:?}", rs2);
+        assert_eq!( rs2.get_value(&data), Ok(Data::String("hello".to_string())))
+    }
+
+    #[test]
+    fn can_parse_assignment() {
+        let r1 = ExpressionParser::parse("A=2*6".to_string()).unwrap();
+        println!("Parsed: {:?}", r1);
+
+        let mut data = Context::new();
+        // data.values.insert( "A".to_string(), Data::Integer(1));
+
+        let rs1 = r1.execute(&mut data);
+        println!( "==> {:?}", rs1);
+        assert_eq!( rs1.get_value(&data), Ok(Data::Integer(12)) );
+        assert_eq!( data.values.get("A"), Some(&Data::Integer(12)) );
+
+    }
+
 }

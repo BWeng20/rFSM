@@ -53,8 +53,7 @@ pub mod tracer;
 pub mod remote_tracer;
 
 pub mod actions;
-pub mod expression_parser;
-pub mod expressions;
+pub mod expression_engine;
 pub mod test;
 
 #[cfg(feature = "Trace")]

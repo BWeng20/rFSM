@@ -9,11 +9,9 @@ use crate::actions::ActionMap;
 use log::error;
 
 use crate::event_io_processor::EventIOProcessor;
-use crate::expression_parser::{ExpressionLexer, Token};
-use crate::expressions::Operator;
-use crate::fsm::{
-    vec_to_string, CommonContent, Event, ExecutableContentId, Fsm, GlobalData, InvokeId, ParamPair, Parameter, StateId,
-};
+use crate::expression_engine::parser::{ExpressionLexer, Token};
+use crate::expression_engine::expressions::Operator;
+use crate::fsm::{vec_to_string, CommonContent, Event, ExecutableContentId, Fsm, GlobalData, InvokeId, ParamPair, Parameter, StateId, State};
 
 pub const DATAMODEL_OPTION_PREFIX: &str = "datamodel:";
 
@@ -139,7 +137,21 @@ pub trait Datamodel {
     /// Initialize the data model for one data-store.
     /// This method is called for the global data and for the data of each state.
     #[allow(non_snake_case)]
-    fn initializeDataModel(&mut self, fsm: &mut Fsm, state: StateId, set_data: bool);
+    fn initializeDataModel(&mut self, fsm: &mut Fsm, state: StateId, set_data: bool) {
+        let state_obj: &State = fsm.get_state_by_id_mut(state);
+        // Set all (simple) global variables.
+        self.set_from_data_store(&state_obj.data, set_data);
+        if state == fsm.pseudo_root {
+            let mut ds = DataStore::new();
+            ds.values = self.global().lock().environment.values.clone();
+            self.set_from_data_store(&ds, true);
+        }
+    }
+
+    /// Sets data from state data-store.\
+    /// set_data - if true set the data, otherwise just initialize the variables.
+    fn set_from_data_store(&mut self, data: &DataStore, set_data: bool);
+
 
     /// Initialize a global read-only variable.
     fn initialize_read_only(&mut self, name: &str, value: &str);
@@ -192,7 +204,10 @@ pub trait Datamodel {
     fn clear(&mut self);
 
     /// "log" function, use for \<log\> content.
-    fn log(&mut self, msg: &str);
+    fn log(&mut self, msg: &str) {
+        println!("{}", msg);
+    }
+
 
     /// Executes a script.\
     /// If the script execution fails, "error.execute" shall be put
@@ -397,6 +412,10 @@ impl Datamodel for NullDatamodel {
 
     #[allow(non_snake_case)]
     fn initializeDataModel(&mut self, _fsm: &mut Fsm, _dataState: StateId, _set_data: bool) {
+        // nothing to do
+    }
+
+    fn set_from_data_store(&mut self, _data: &DataStore, _set_data: bool) {
         // nothing to do
     }
 

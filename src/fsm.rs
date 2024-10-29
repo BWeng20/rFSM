@@ -46,6 +46,7 @@ use crate::ecma_script_datamodel::ECMA_SCRIPT_LC;
 
 use crate::event_io_processor::EventIOProcessor;
 use crate::executable_content::ExecutableContent;
+use crate::expression_engine::datamodel::{RFSM_EXPRESSION_DATAMODEL_LC, RFsmExpressionDatamodelFactory};
 use crate::fsm::BindingType::{Early, Late};
 use crate::fsm_executor::FsmExecutor;
 use crate::get_global;
@@ -3540,6 +3541,11 @@ lazy_static! {
         hs.insert(
             NULL_DATAMODEL_LC.to_string(),
             Box::new(NullDatamodelFactory {}),
+        );
+        #[cfg(feature = "RfsmExpressionModel")]
+        hs.insert(
+            RFSM_EXPRESSION_DATAMODEL_LC.to_string(),
+            Box::new( RFsmExpressionDatamodelFactory {}),
         );
 
         Arc::new(Mutex::new(hs))
