@@ -1,10 +1,7 @@
 //! Implementation of a simple expression parser.
 
 use crate::datamodel::Data;
-use crate::expression_engine::expressions::{ExpressionConstant,
-                                            Expression, ExpressionMethod, ExpressionVariable, Operator,
-                                            ExpressionOperator, ExpressionMemberAccess,
-                                            get_expression_as, Context, ExpressionAssign};
+use crate::expression_engine::expressions::{ExpressionConstant, Expression, ExpressionMethod, ExpressionVariable, Operator, ExpressionOperator, ExpressionMemberAccess, get_expression_as, ExpressionContext, ExpressionAssign, ExpressionArray};
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
@@ -87,7 +84,7 @@ impl ExpressionLexer {
             '-' | '+' | '/' | ':' | '*' |
             '<' | '>' | '=' | '%' |
             // Brackets
-            '(' | ')' | '{' | '}' |
+            '[' | ']' | '(' | ')' | '{' | '}' |
             // String
             '"' | '\'' => { true }
             _ => { false }
@@ -471,16 +468,16 @@ impl Display for ExpressionParserItem {
 impl ExpressionParser {
 
     /// Parse a argument list, stops at the matching ")"
-    fn parse_argument_list( lexer : &mut ExpressionLexer) -> Result<Vec<Box<dyn Expression>>, String> {
+    fn parse_argument_list( lexer : &mut ExpressionLexer, stop: char) -> Result<Vec<Box<dyn Expression>>, String> {
         let mut r= Vec::new();
         loop {
-            let (stop, expression) = Self::parse_sub_expression( lexer, &[',',')'])?;
+            let (stopc, expression) = Self::parse_sub_expression( lexer, &[',',stop])?;
             r.push(expression);
-            if stop == ')' {
+            if stopc == stop {
                 break;
             }
-            if stop == '\0' {
-                return Err("Missing ')'".to_string())
+            if stopc == '\0' {
+                return Err(format!("Missing '{}'", stop))
             }
         }
         Ok(r)
@@ -495,8 +492,9 @@ impl ExpressionParser {
 
     /// Parses and executes an expression.\
     /// If possible, please use "parse" and re-use the parsed expressions.
-    pub fn execute(text: String, context: &mut Context) -> Result<Data,String> {
-        let r = Self::parse(text);
+    pub fn execute(source: String, context: &mut dyn ExpressionContext) -> Result<Data,String> {
+        println!("eval {}", source);
+        let r = Self::parse(source);
         match r {
             Ok(v) => {
                 let d = v.execute(context).get_value(context);
@@ -569,7 +567,7 @@ impl ExpressionParser {
                                                     return Result::Err(format!("Unexpected '{}'", br));
                                                 }
                                                 Token::Identifier(id) => {
-                                                    let v = Self::parse_argument_list( lexer );
+                                                    let v = Self::parse_argument_list( lexer, ')' );
                                                     let x = Box::new(ExpressionMethod::new(id.as_str(), v.unwrap()));
                                                     stack.push(ExpressionParserItem::SExpression(x));
                                                 }
@@ -590,7 +588,11 @@ impl ExpressionParser {
                                 }
                             }
                         }
-                        // TODO: []
+                        '[' => {
+                            let v = Self::parse_argument_list( lexer, ']' );
+                            let x = Box::new(ExpressionArray::new(v.unwrap()));
+                            stack.push(ExpressionParserItem::SExpression(x));
+                        }
                         _ => {
                             if stops.contains(br) {
                                 stop = *br;
@@ -777,7 +779,7 @@ impl ExpressionParser {
 mod tests {
     use std::collections::HashMap;
     use crate::datamodel::Data;
-    use crate::expression_engine::expressions::{Context, ExpressionResult};
+    use crate::expression_engine::expressions::{ExpressionContext, ExpressionResult};
     use crate::expression_engine::parser::{ExpressionLexer, ExpressionParser, NumericToken, Operator, Token};
 
     #[test]
@@ -1007,7 +1009,7 @@ mod tests {
 
     #[test]
     fn parser_can_parse_a_simple_expression_without_identifiers() {
-        let mut data = Context::new();
+        let mut data = ExpressionContext::new();
 
         let r = ExpressionParser::parse("12 * 3.4".to_string()).unwrap();
         print!("Parsed: {:?}", r);
@@ -1030,7 +1032,7 @@ mod tests {
 
     #[test]
     fn expressions_prioritize_multiplication_division_operations() {
-        let mut data = Context::new();
+        let mut data = ExpressionContext::new();
 
         let r = ExpressionParser::parse("12 + 2 * 4".to_string()).unwrap();
         print!("Parsed: {:?}", r);
@@ -1062,7 +1064,7 @@ mod tests {
         let r2 = ExpressionParser::parse("A.b.c".to_string()).unwrap();
         println!("Parsed: {:?}", r2);
 
-        let mut data = Context::new();
+        let mut data = ExpressionContext::new();
         let mut hs1 = HashMap::new();
         let mut hs2 = HashMap::new();
         hs2.insert("c".to_string(), Data::String("hello".to_string()));
@@ -1083,14 +1085,13 @@ mod tests {
         let r1 = ExpressionParser::parse("A=2*6".to_string()).unwrap();
         println!("Parsed: {:?}", r1);
 
-        let mut data = Context::new();
+        let mut data = ExpressionContext::new();
         // data.values.insert( "A".to_string(), Data::Integer(1));
 
         let rs1 = r1.execute(&mut data);
         println!( "==> {:?}", rs1);
         assert_eq!( rs1.get_value(&data), Ok(Data::Integer(12)) );
         assert_eq!( data.values.get("A"), Some(&Data::Integer(12)) );
-
     }
 
 }

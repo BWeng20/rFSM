@@ -3,6 +3,7 @@
 use std::any::Any;
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
+use std::num::ParseFloatError;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::actions::ActionMap;
@@ -140,21 +141,22 @@ pub trait Datamodel {
     fn initializeDataModel(&mut self, fsm: &mut Fsm, state: StateId, set_data: bool) {
         let state_obj: &State = fsm.get_state_by_id_mut(state);
         // Set all (simple) global variables.
-        self.set_from_data_store(&state_obj.data, set_data);
+        self.set_from_state_data(&state_obj.data, set_data);
         if state == fsm.pseudo_root {
-            let mut ds = DataStore::new();
-            ds.values = self.global().lock().environment.values.clone();
-            self.set_from_data_store(&ds, true);
+            let ds = self.global().lock().environment.clone();
+            self.set_from_state_data(&ds, true);
         }
     }
 
+
     /// Sets data from state data-store.\
+    /// All data-elements contain script-source and needs to be evaluated by the datamodel before use.
     /// set_data - if true set the data, otherwise just initialize the variables.
-    fn set_from_data_store(&mut self, data: &DataStore, set_data: bool);
+    fn set_from_state_data(&mut self, data: &HashMap<String,Data>, set_data: bool);
 
 
     /// Initialize a global read-only variable.
-    fn initialize_read_only(&mut self, name: &str, value: &str);
+    fn initialize_read_only(&mut self, name: &str, value: Data);
 
     /// Sets a global variable.
     fn set(&mut self, name: &str, data: Data);
@@ -176,9 +178,9 @@ pub trait Datamodel {
     /// If value_expression is empty, Ok(value) is returned (if empty or not). If the expression
     /// results in error Err(message) and "error.execute" is put in internal queue.
     /// See [internal_error_execution](Datamodel::internal_error_execution).
-    fn get_expression_alternative_value(&mut self, value: &str, value_expression: &str) -> Result<String, String> {
+    fn get_expression_alternative_value(&mut self, value: &Data, value_expression: &Data) -> Result<Data, String> {
         if value_expression.is_empty() {
-            Ok(value.to_string())
+            Ok(value.clone())
         } else {
             match self.execute(value_expression) {
                 Err(_msg) => {
@@ -191,14 +193,21 @@ pub trait Datamodel {
     }
 
     /// Get an _ioprocessor by name.
-    fn get_io_processor(&mut self, name: &str) -> Option<Arc<Mutex<Box<dyn EventIOProcessor>>>>;
+    fn get_io_processor(&mut self, name: &str) -> Option<Arc<Mutex<Box<dyn EventIOProcessor>>>> {
+        self.global().lock().io_processors.get(name).cloned()
+    }
 
     /// Send an event via io-processor.
     /// Mainly here because of optimization reasons (spared copies).
-    fn send(&mut self, ioc_processor: &str, target: &str, event: Event) -> bool;
-
-    /// Get a modifiable data element by name.
-    fn get_mut(&mut self, name: &str) -> Option<&mut Data>;
+    fn send(&mut self, ioc_processor: &str, target: &Data, event: Event) -> bool {
+        let ioc = self.get_io_processor(ioc_processor);
+        if let Some(ic) = ioc {
+            let mut icg = ic.lock().unwrap();
+            icg.send(&self.global(), target.to_string().as_str(), event)
+        } else {
+            false
+        }
+    }
 
     /// Clear all data.
     fn clear(&mut self);
@@ -213,7 +222,7 @@ pub trait Datamodel {
     /// If the script execution fails, "error.execute" shall be put
     /// inside the internal event queue.
     /// See [internal_error_execution](Datamodel::internal_error_execution).
-    fn execute(&mut self, script: &str) -> Result<String, String>;
+    fn execute(&mut self, script: &Data) -> Result<Data, String>;
 
     /// Executes a for-each loop
     fn execute_for_each(
@@ -232,7 +241,7 @@ pub trait Datamodel {
     /// #Actual Implementation:
     /// As no side effects shall occur, this method should be "&self". But we assume that most script-engines have
     /// no read-only "eval" function and such method may be hard to implement.
-    fn execute_condition(&mut self, script: &str) -> Result<bool, String>;
+    fn execute_condition(&mut self, script: &Data) -> Result<bool, String>;
 
     /// Executes content by id.
     #[allow(non_snake_case)]
@@ -267,14 +276,22 @@ pub trait Datamodel {
 
     /// Evaluates a content element.\
     /// Returns the static content or executes the expression.
-    fn evaluate_content(&mut self, content: &Option<CommonContent>) -> Option<String> {
+    fn evaluate_content(&mut self, content: &Option<CommonContent>) -> Option<Data> {
         match content {
             None => None,
             Some(ct) => {
                 match &ct.content_expr {
-                    None => ct.content.clone(),
+                    None => {
+                        match &ct.content {
+                            None => {None}
+                            Some(ct_content) => {
+                                Some(Data::Source(ct_content.clone()))
+                            }
+                        }
+
+                    },
                     Some(expr) => {
-                        match self.execute(expr.as_str()) {
+                        match self.execute(&Data::Source(expr.clone())) {
                             Err(msg) => {
                                 // W3C:\
                                 // If the evaluation of 'expr' produces an error, the Processor must place
@@ -315,7 +332,7 @@ pub trait Datamodel {
                             }
                         }
                     } else if !param.expr.is_empty() {
-                        match self.execute(param.expr.as_str()) {
+                        match self.execute(&Data::Source(param.expr.clone())) {
                             Err(msg) => {
                                 //  W3C:\
                                 // ...if the evaluation of the 'expr' produces an error, the SCXML
@@ -327,7 +344,7 @@ pub trait Datamodel {
                             Ok(value) => {
                                 values.push(ParamPair::new_moved(
                                     param.name.clone(),
-                                    Data::String(value),
+                                    value
                                 ));
                             }
                         }
@@ -415,11 +432,11 @@ impl Datamodel for NullDatamodel {
         // nothing to do
     }
 
-    fn set_from_data_store(&mut self, _data: &DataStore, _set_data: bool) {
+    fn set_from_state_data(&mut self, _data: &HashMap<String,Data>, _set_data: bool) {
         // nothing to do
     }
 
-    fn initialize_read_only(&mut self, _name: &str, _value: &str) {
+    fn initialize_read_only(&mut self, _name: &str, _value: Data) {
         // nothing to do
     }
 
@@ -440,31 +457,13 @@ impl Datamodel for NullDatamodel {
         Err("unimplemented".to_string())
     }
 
-    fn get_io_processor(&mut self, name: &str) -> Option<Arc<Mutex<Box<dyn EventIOProcessor>>>> {
-        self.global.lock().io_processors.get(name).cloned()
-    }
-
-    fn send(&mut self, ioc_processor: &str, target: &str, event: Event) -> bool {
-        let ioc = self.get_io_processor(ioc_processor);
-        if let Some(ic) = ioc {
-            let mut icg = ic.lock().unwrap();
-            icg.send(&self.global, target, event)
-        } else {
-            false
-        }
-    }
-
-    fn get_mut(&mut self, _name: &str) -> Option<&mut Data> {
-        None
-    }
-
     fn clear(self: &mut NullDatamodel) {}
 
     fn log(self: &mut NullDatamodel, msg: &str) {
         println!("{}", msg);
     }
 
-    fn execute(&mut self, _script: &str) -> Result<String, String> {
+    fn execute(&mut self, _script: &Data) -> Result<Data, String> {
         Err("unimplemented".to_string())
     }
 
@@ -483,7 +482,7 @@ impl Datamodel for NullDatamodel {
     /// The boolean expression language consists of the In predicate only.
     /// It has the form 'In(id)', where id is the id of a state in the enclosing state machine.
     /// The predicate must return 'true' if and only if that state is in the current state configuration.
-    fn execute_condition(&mut self, script: &str) -> Result<bool, String> {
+    fn execute_condition(&mut self, script: &Data) -> Result<bool, String> {
         let mut lexer = ExpressionLexer::new(script.to_string());
         if lexer.next_token() == Token::Identifier("In".to_string()) && lexer.next_token() == Token::Bracket('(') {
             match lexer.next_token() {
@@ -536,9 +535,12 @@ pub enum Data {
     Array(Vec<Data>),
     Map(HashMap<String, Data>),
     Null(),
-    /// Special placeholder to indicate ab error
-    Error(String)
-
+    /// Special placeholder to indicate an error
+    Error(String),
+    /// Special placeholder to indicate source (from FSM definition) that needs to be evaluated by the datamodel.
+    Source(String),
+    /// Special placeholder to indicate an empty content.
+    None(),
 }
 
 impl Display for Data {
@@ -552,7 +554,7 @@ impl Display for Data {
             }
             Data::String(v) => {
                 // TODO: Escape
-                write!(f, "'{}'", v)
+                write!(f, "{}", v)
             }
             Data::Boolean(v) => {
                 write!(f, "{}", v)
@@ -584,6 +586,12 @@ impl Display for Data {
             }
             Data::Error(err) => {
                 write!(f, "Error {}", err)
+            },
+            Data::Source(src) => {
+                write!(f, "{}", src)
+            }
+            Data::None() => {
+                write!(f, "")
             }
         }
     }
@@ -637,6 +645,8 @@ impl Data {
     pub fn operation(&self, op : Operator, right : &Data) -> Data {
         if let Data::Null() = right {
             return Data::Null();
+        } else if let Data::None() = right {
+            return Data::None();
         } else if let Data::Error(err) = right {
             return Data::Error(err.clone());
         } else if let Data::String(right_content) = right {
@@ -710,6 +720,7 @@ impl Data {
                  Data::Error("Incompatible Datatypes".to_string())
              }
          }
+         Data::Source(self_content) |
          Data::String(self_content) => {
              match op {
                  Operator::Not |
@@ -860,7 +871,10 @@ impl Data {
                      Data::Boolean( !matches!(right, Data::Null() ))
                  }
              }
-         }
+         },
+         Data::None() => {
+             Data::None()
+         },
          Data::Error(e) => {
              Data::Error(e.clone())
          }
@@ -899,7 +913,53 @@ impl Data {
             Data::Error(_) => {
                 0f64
             }
+            Data::Source(src) => {
+                let r = src.parse::<f64>();
+                match r {
+                    Ok(v) => { v  }
+                    Err(_) => { 0f64 }
+                }
+            }
+            Data::None() => {
+                0f64
+            }
         }
+    }
+
+    pub fn as_script(&self) -> String {
+        match self {
+            Data::Integer(v) => {
+                v.to_string()
+            }
+            Data::Double(v) => {
+                v.to_string()
+            }
+            Data::String(s) => {
+                format!("'{}'", s )
+            }
+            Data::Boolean(b) => {
+                (if *b { "true"} else {"false"}).to_string()
+            }
+            Data::Array(_) => {
+                self.to_string()
+            }
+            Data::Map(_) => {
+                self.to_string()
+            }
+            Data::Null() => {
+                "null".to_string()
+            }
+            Data::Error(_) => {
+                "".to_string()
+            }
+            Data::Source(s) => {
+                s.clone()
+            }
+            Data::None() => {
+                "".to_string()
+            }
+        }
+
     }
 
     pub fn is_numeric(&self) -> bool {
@@ -927,6 +987,43 @@ impl Data {
             }
             Data::Error(_) => {
                 false
+            }
+            Data::Source(_) => {
+                false
+            }
+            Data::None() => {
+                false
+            }
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Data::Boolean(_) |
+            Data::Integer(_) |
+            Data::Double(_) => {
+                false
+            }
+            Data::String(s) => {
+                s.is_empty()
+            }
+            Data::Array(a) => {
+                a.is_empty()
+            }
+            Data::Map(m) => {
+                m.is_empty()
+            }
+            Data::Null() => {
+                true
+            }
+            Data::Error(_) => {
+                true
+            }
+            Data::Source(s) => {
+                s.is_empty()
+            }
+            Data::None() => {
+                true
             }
         }
     }
@@ -979,7 +1076,7 @@ impl DataStore {
         }
     }
 
-    pub fn set(&mut self, key: &str, data: Data) {
-        self.values.insert(key.to_string(), data);
+    pub fn set(&mut self, key: String, data: Data) {
+        self.values.insert(key, data);
     }
 }

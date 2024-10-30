@@ -118,6 +118,13 @@ impl<W: Write> ProtocolWriter<W> for DefaultProtocolWriter<W> {
                 self.write_u8(7);
                 self.write_str(s.as_str());
             }
+            Data::Source(s) => {
+                self.write_u8(8);
+                self.write_str(s.as_str());
+            }
+            Data::None()=> {
+                self.write_u8(9);
+            }
             Data::Null() => {
                 self.write_u8(0);
             }

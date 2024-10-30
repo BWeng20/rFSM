@@ -100,6 +100,69 @@ impl<R: Read> DefaultProtocolReader<R> {
         }
     }
 
+    fn read_data_value_payload(&mut self, what: u8) -> Data {
+        match what {
+            0 => Data::Null(),
+            1 => {
+                let rv = self.read_string();
+                match rv.parse::<i64>() {
+                    Ok(val) => Data::Integer(val),
+                    Err(err) => {
+                        self.error(format!("Protocol error in Integer data value: {} -> {}", rv, err).as_str());
+                        self.ok = false;
+                        Data::Null()
+                    }
+                }
+            }
+            2 => {
+                let rv = self.read_string();
+                match rv.parse::<f64>() {
+                    Ok(val) => Data::Double(val),
+                    Err(err) => {
+                        self.error(format!("Protocol error in Double data value: {} -> {}", rv, err).as_str());
+                        self.ok = false;
+                        Data::Null()
+                    }
+                }
+            }
+            3 => Data::String(self.read_string()),
+            4 => Data::Boolean(self.read_boolean()),
+            5 => {
+                let len = self.read_usize();
+                let mut val = Vec::with_capacity(len);
+                for _i in 0..len {
+                    val.push(self.read_data_value());
+                }
+                Data::Array(val)
+            }
+            6 => {
+                let len = self.read_usize();
+                let mut val = HashMap::with_capacity(len);
+                for _i in 0..len {
+                    let k = self.read_string();
+                    val.insert(k, self.read_data_value());
+                }
+                Data::Map(val)
+            }
+            7 => {
+                let k = self.read_string();
+                Data::Error(k)
+            }
+            8 => {
+                let k = self.read_string();
+                Data::Source(k)
+            }
+            9 => {
+                Data::None()
+            }
+            _ => {
+                self.error(format!("Protocol error in data value: unknown variant {}", what).as_str());
+                self.ok = false;
+                Data::Null()
+            }
+        }
+    }
+
     fn read_type_and_size(&mut self) {
         if self.ok {
             self.type_and_value.string.clear();
@@ -259,59 +322,7 @@ impl<R: Read> ProtocolReader<R> for DefaultProtocolReader<R> {
 
     fn read_data_value(&mut self) -> Data {
         let what = self.read_u8();
-        match what {
-            0 => Data::Null(),
-            1 => {
-                let rv = self.read_string();
-                match rv.parse::<i64>() {
-                    Ok(val) => Data::Integer(val),
-                    Err(err) => {
-                        self.error(format!("Protocol error in Integer data value: {} -> {}", rv, err).as_str());
-                        self.ok = false;
-                        Data::Null()
-                    }
-                }
-            }
-            2 => {
-                let rv = self.read_string();
-                match rv.parse::<f64>() {
-                    Ok(val) => Data::Double(val),
-                    Err(err) => {
-                        self.error(format!("Protocol error in Double data value: {} -> {}", rv, err).as_str());
-                        self.ok = false;
-                        Data::Null()
-                    }
-                }
-            }
-            3 => Data::String(self.read_string()),
-            4 => Data::Boolean(self.read_boolean()),
-            5 => {
-                let len = self.read_usize();
-                let mut val = Vec::with_capacity(len);
-                for _i in 0..len {
-                    val.push(self.read_data_value());
-                }
-                Data::Array(val)
-            }
-            6 => {
-                let len = self.read_usize();
-                let mut val = HashMap::with_capacity(len);
-                for _i in 0..len {
-                    let k = self.read_string();
-                    val.insert(k, self.read_data_value());
-                }
-                Data::Map(val)
-            }
-            7 => {
-                let k = self.read_string();
-                Data::Error(k)
-            }
-            _ => {
-                self.error(format!("Protocol error in data value: unknown variant {}", what).as_str());
-                self.ok = false;
-                Data::Null()
-            }
-        }
+        self.read_data_value_payload(what)
     }
 
     fn read_string(&mut self) -> String {

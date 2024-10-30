@@ -6,7 +6,6 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::string::ToString;
-use std::sync::{Arc, Mutex};
 #[cfg(test)]
 use std::{println as warn, println as error};
 
@@ -32,17 +31,18 @@ use boa_gc::{empty_trace, Finalize, Trace};
 use log::{error, warn};
 
 use crate::datamodel::{
-    Data, DataStore, Datamodel, DatamodelFactory, GlobalDataArc, EVENT_VARIABLE_FIELD_DATA,
+    Data, Datamodel, DatamodelFactory, GlobalDataArc, EVENT_VARIABLE_FIELD_DATA,
     EVENT_VARIABLE_FIELD_INVOKE_ID, EVENT_VARIABLE_FIELD_NAME, EVENT_VARIABLE_FIELD_ORIGIN,
     EVENT_VARIABLE_FIELD_ORIGIN_TYPE, EVENT_VARIABLE_FIELD_SEND_ID, EVENT_VARIABLE_FIELD_TYPE, EVENT_VARIABLE_NAME,
 };
-use crate::event_io_processor::{EventIOProcessor, SYS_IO_PROCESSORS};
+use crate::event_io_processor::SYS_IO_PROCESSORS;
 
 #[cfg(feature = "Trace")]
 use crate::executable_content::DefaultExecutableContentTracer;
 
 use crate::executable_content::{ExecutableContent, ExecutableContentTracer};
-use crate::fsm::{Event, ExecutableContentId, Fsm, State, StateId};
+use crate::expression_engine::expressions::ExpressionContext;
+use crate::fsm::{ExecutableContentId, Fsm, StateId};
 
 pub const ECMA_SCRIPT: &str = "ECMAScript";
 pub const ECMA_SCRIPT_LC: &str = "ecmascript";
@@ -59,7 +59,6 @@ pub static ECMA_STRICT_ARGUMENT: ArgOption = ArgOption {
 };
 
 pub struct ECMAScriptDatamodel {
-    pub data: DataStore,
     pub global_data: GlobalDataArc,
     pub context: Context,
     pub tracer: Option<Box<dyn ExecutableContentTracer>>,
@@ -114,9 +113,9 @@ impl FsmJSWrapper {
 }
 
 impl ECMAScriptDatamodel {
+
     pub fn new(global_data: GlobalDataArc) -> ECMAScriptDatamodel {
         ECMAScriptDatamodel {
-            data: DataStore::new(),
             global_data,
             context: ContextBuilder::new().build().unwrap(),
             #[cfg(feature = "Trace")]
@@ -124,6 +123,74 @@ impl ECMAScriptDatamodel {
             #[cfg(not(feature = "Trace"))]
             tracer: None,
             strict_mode: false,
+        }
+    }
+
+    pub fn js_to_data_value(value: &JsValue, ctx: &mut Context) -> Result<Data, String> {
+        #[cfg(feature = "Debug")]
+        debug!("js2d {:?} -> {:?}", value, value.get_type());
+        match value.get_type() {
+            Type::Undefined => Ok(Data::None()),
+            Type::Null => Ok(Data::Null()),
+            Type::Boolean => Ok(Data::Boolean(value.as_boolean().unwrap())),
+            Type::Number => Ok(Data::Double(value.as_number().unwrap())),
+            Type::Symbol | Type::String => Ok(Data::String(js_to_string(value, ctx))),
+            Type::BigInt => match value.to_big_int64(ctx) {
+                Ok(val) => Ok(Data::Integer(val)),
+                Err(err) => {
+                    error!("Can't converted '{:?}' to Data::Integer: {}", value, err);
+                    Ok(Data::None())
+                }
+            },
+            Type::Object => match value.to_object(ctx) {
+                Ok(obj) => {
+                    if obj.is_array() {
+                        let ar = JsArray::from_object(obj.clone()).unwrap();
+                        let len = ar.length(ctx).unwrap() as usize;
+                        #[cfg(feature = "Debug")]
+                        debug!("js2d array #{} >>", len);
+                        let mut dv = Vec::with_capacity(len);
+                        for i in 0..len {
+                            let v = ar.get(i, ctx).unwrap();
+                            if let Ok(av) = Self::js_to_data_value(&v, ctx) {
+                                dv.push(av)
+                            }
+                        }
+                        #[cfg(feature = "Debug")]
+                        debug!("<< js2d array #{}", dv.len());
+                        Ok(Data::Array(dv))
+                    } else {
+                        let keys = obj.own_property_keys(ctx).unwrap();
+                        #[cfg(feature = "Debug")]
+                        debug!("js2d object #{} >>", keys.len());
+                        let mut dvm = HashMap::with_capacity(keys.len());
+                        for key in &keys {
+                            let name = match key {
+                                PropertyKey::String(ref name) => name.to_std_string().unwrap(),
+                                PropertyKey::Symbol(ref name) => name.fn_name().to_std_string().unwrap(),
+                                PropertyKey::Index(idx) => idx.get().to_string(),
+                            };
+                            #[cfg(feature = "Debug")]
+                            debug!("key '{}'", key);
+                            let js = obj.get(key.clone(), ctx).unwrap();
+                            match Self::js_to_data_value(&js, ctx) {
+                                Err(err) => {
+                                    warn!("{}", err)
+                                }
+                                Ok(dt) => {
+                                    dvm.insert(name, dt);
+                                }
+                            }
+                        }
+                        #[cfg(feature = "Debug")]
+                        debug!("<< js2d object #{}", dvm.len());
+                        Ok(Data::Map(dvm))
+                    }
+                }
+                Err(err) => {
+                    Err(format!("Can't converted '{:?}' to Data: {}", value, err))
+                }
+            },
         }
     }
 
@@ -141,21 +208,19 @@ impl ECMAScriptDatamodel {
         }
     }
 
-    fn execute_internal(&mut self, script: &str, handle_error: bool) -> Result<String, String> {
+    fn execute_internal(&mut self, script: &Data, handle_error: bool) -> Result<Data, String> {
         let result = self.eval(script);
         match result {
             Ok(res) => {
                 if res.is_undefined() {
                     #[cfg(feature = "Debug")]
                     debug!("Execute: {} => undefined", script);
-                    Ok("".to_string())
+                    Ok(Data::Null())
                 } else {
-                    match res.to_string(&mut self.context) {
-                        Ok(str) => {
-                            let r = str.to_std_string_escaped();
-                            #[cfg(feature = "Debug")]
-                            debug!("Execute: {} => {}", script, r);
-                            Ok(r)
+                    debug!("Execute: {} => {:?}", script, res);
+                    match Self::js_to_data_value(&res, &mut self.context) {
+                        Ok(s) => {
+                            Ok(s)
                         }
                         Err(err) => {
                             let msg = format!(
@@ -190,8 +255,8 @@ impl ECMAScriptDatamodel {
         e.execute(self, fsm)
     }
 
-    fn eval(&mut self, source: &str) -> JsResult<JsValue> {
-        self.context.eval(Source::from_bytes(source))
+    fn eval(&mut self, source: &Data) -> JsResult<JsValue> {
+        self.context.eval(Source::from_bytes(&source.as_script()))
     }
 
     fn set_js_property<V>(&mut self, name: &str, value: V)
@@ -214,7 +279,7 @@ impl ECMAScriptDatamodel {
         if allow_undefined && self.strict_mode {
             self.context.strict(false);
         }
-        let r = match self.eval(exp.as_str()) {
+        let r = match self.eval(&Data::Source(exp)) {
             Ok(_) => true,
             Err(error) => {
                 // W3C says:\
@@ -242,6 +307,7 @@ impl ECMAScriptDatamodel {
 
     pub fn data_value_to_js(data: &Data, context: &mut Context) -> JsValue {
         match data {
+            Data::None() => JsValue::Undefined,
             Data::Null() => JsValue::Null,
             Data::Integer(v) => JsValue::BigInt(JsBigInt::from(*v)),
             Data::Double(v) => JsValue::Rational(*v),
@@ -266,73 +332,9 @@ impl ECMAScriptDatamodel {
             Data::Error(_error) => {
                 JsValue::Null
             }
-        }
-    }
-
-    pub fn js_to_data_value(value: &JsValue, ctx: &mut Context) -> Option<Data> {
-        #[cfg(feature = "Debug")]
-        debug!("js2d {:?} -> {:?}", value, value.get_type());
-        match value.get_type() {
-            Type::Undefined => None,
-            Type::Null => Some(Data::Null()),
-            Type::Boolean => Some(Data::Boolean(value.as_boolean().unwrap())),
-            Type::Number => Some(Data::Double(value.as_number().unwrap())),
-            Type::Symbol | Type::String => Some(Data::String(js_to_string(value, ctx))),
-            Type::BigInt => match value.to_big_int64(ctx) {
-                Ok(val) => Some(Data::Integer(val)),
-                Err(err) => {
-                    error!("Can't converted '{:?}' to Data::Integer: {}", value, err);
-                    Some(Data::Null())
-                }
-            },
-            Type::Object => match value.to_object(ctx) {
-                Ok(obj) => {
-                    if obj.is_array() {
-                        let ar = JsArray::from_object(obj.clone()).unwrap();
-                        let len = ar.length(ctx).unwrap() as usize;
-                        #[cfg(feature = "Debug")]
-                        debug!("js2d array #{} >>", len);
-                        let mut dv = Vec::with_capacity(len);
-                        for i in 0..len {
-                            let v = ar.get(i, ctx).unwrap();
-                            if let Some(av) = Self::js_to_data_value(&v, ctx) {
-                                dv.push(av)
-                            }
-                        }
-                        #[cfg(feature = "Debug")]
-                        debug!("<< js2d array #{}", dv.len());
-                        Some(Data::Array(dv))
-                    } else {
-                        let keys = obj.own_property_keys(ctx).unwrap();
-                        #[cfg(feature = "Debug")]
-                        debug!("js2d object #{} >>", keys.len());
-                        let mut dvm = HashMap::with_capacity(keys.len());
-                        for key in &keys {
-                            let name = match key {
-                                PropertyKey::String(ref name) => name.to_std_string().unwrap(),
-                                PropertyKey::Symbol(ref name) => name.fn_name().to_std_string().unwrap(),
-                                PropertyKey::Index(idx) => idx.get().to_string(),
-                            };
-                            #[cfg(feature = "Debug")]
-                            debug!("key '{}'", key);
-                            let js = obj.get(key.clone(), ctx).unwrap();
-                            match Self::js_to_data_value(&js, ctx) {
-                                None => {}
-                                Some(dt) => {
-                                    dvm.insert(name, dt);
-                                }
-                            }
-                        }
-                        #[cfg(feature = "Debug")]
-                        debug!("<< js2d object #{}", dvm.len());
-                        Some(Data::Map(dvm))
-                    }
-                }
-                Err(err) => {
-                    error!("Can't converted '{:?}' to Data: {}", value, err);
-                    Some(Data::Null())
-                }
-            },
+            Data::Source(source) => {
+                JsValue::String(js_string!(source.clone()))
+            }
         }
     }
 
@@ -349,7 +351,7 @@ impl ECMAScriptDatamodel {
                     arg_list.reserve(len);
                     for i in 0..len {
                         let v = ar.get(i, ctx).unwrap();
-                        if let Some(av) = Self::js_to_data_value(&v, ctx) {
+                        if let Ok(av) = Self::js_to_data_value(&v, ctx) {
                             arg_list.push(av)
                         }
                     }
@@ -506,44 +508,51 @@ impl Datamodel for ECMAScriptDatamodel {
         }
     }
 
-    fn set_from_data_store(&mut self, data: &DataStore, set_data: bool) {
-        for (name, data) in &data.values {
+    fn set_from_state_data(&mut self, data: &HashMap<String,Data>, set_data: bool) {
+        for (name, data) in data {
             if set_data {
-                if let Data::String(dv) = data {
-                    let rs = self.context.eval(Source::from_bytes(dv.as_str()));
-                    match rs {
-                        Ok(val) => {
-                            self.set_js_property(name.as_str(), val);
-                        }
-                        Err(err) => {
-                            error!("Error on Initialize '{}': {}", name, err);
-                            // W3C says:
-                            // If the value specified for a <data> element (by 'src', children, or
-                            // the environment) is not a legal data value, the SCXML Processor MUST
-                            // raise place error.execution in the internal event queue and MUST
-                            // create an empty data element in the data model with the specified id.
-                            self.set_js_property(name.as_str(), JsValue::Undefined);
-                            self.internal_error_execution();
-                        }
+                    if let Data::Source(src) = data {
+                        if !src.is_empty() {
+                            let rs = self.context.eval(Source::from_bytes(src.as_str()));
+                            println!("set_from_state_data {} -> {:?}", src, rs);
+                            match rs {
+                                Ok(val) => {
+                                    self.set_js_property(name.as_str(), val);
+                                }
+                                Err(err) => {
+                                    error!("Error on Initialize '{}': {}", name, err);
+                                    // W3C says:
+                                    // If the value specified for a <data> element (by 'src', children, or
+                                    // the environment) is not a legal data value, the SCXML Processor MUST
+                                    // raise place error.execution in the internal event queue and MUST
+                                    // create an empty data element in the data model with the specified id.
+                                    self.set_js_property(name.as_str(), JsValue::Undefined);
+                                    self.internal_error_execution();
+                                }
+                            }
+                        } else {
+                            self.set_js_property(name.as_str(), JsValue::Null);
+                        };
+                    } else {
+                        let ds = Self::data_value_to_js(data,&mut self.context );
+println!("set_from_state_data {} / {:?} -> {:?}", name, data, ds);
+
+                        self.set_js_property(name.as_str(), ds );
                     }
-                } else {
-                    let djs = Self::data_value_to_js(data, &mut self.context);
-                    self.set_js_property(name.as_str(), djs);
-                }
             } else {
                 self.set_js_property(name.as_str(), JsValue::Undefined);
             }
         }
     }
 
-    fn initialize_read_only(&mut self, name: &str, value: &str) {
+    fn initialize_read_only(&mut self, name: &str, value: Data) {
         let r = self.context.global_object().define_property_or_throw(
             js_string!(name),
             PropertyDescriptor::builder()
                 .configurable(true)
                 .enumerable(false)
                 .writable(false)
-                .value(js_string!(value)),
+                .value(Self::data_value_to_js(&value, &mut self.context)),
             &mut self.context,
         );
         if let Err(error) = r {
@@ -551,17 +560,17 @@ impl Datamodel for ECMAScriptDatamodel {
         }
     }
 
-    fn set(self: &mut ECMAScriptDatamodel, name: &str, data: Data) {
+    fn set(&mut self, name: &str, data: Data) {
         let v = Self::data_value_to_js(&data, &mut self.context);
         self.set_js_property(name, v);
-        self.data.set(name, data);
+        self.global_data.lock().set_data(name.to_string(), data);
     }
 
     fn set_event(&mut self, event: &crate::fsm::Event) {
         let data_value = match &event.param_values {
             None => match &event.content {
                 None => JsValue::Undefined,
-                Some(c) => JsValue::String(js_string!(c.clone())),
+                Some(c) => Self::data_value_to_js( c, &mut self.context),
             },
             Some(pv) => {
                 let ctx = &mut self.context;
@@ -650,39 +659,18 @@ impl Datamodel for ECMAScriptDatamodel {
     }
 
     fn get_by_location(self: &mut ECMAScriptDatamodel, location: &str) -> Result<Data, String> {
-        match self.execute_internal(location, false) {
+        match self.execute_internal(&Data::Source(location.to_string()), false) {
             Err(msg) => {
                 self.internal_error_execution();
                 Err(msg)
             }
-            Ok(val) => Ok(Data::String(val)),
-        }
-    }
-
-    fn get_io_processor(&mut self, name: &str) -> Option<Arc<Mutex<Box<dyn EventIOProcessor>>>> {
-        self.global_data.lock().io_processors.get(name).cloned()
-    }
-
-    fn send(&mut self, ioc_processor: &str, target: &str, event: Event) -> bool {
-        let ioc = self.get_io_processor(ioc_processor);
-        if let Some(ic) = ioc {
-            let mut icg = ic.lock().unwrap();
-            icg.send(&self.global_data, target, event)
-        } else {
-            false
-        }
-    }
-
-    fn get_mut(&mut self, name: &str) -> Option<&mut Data> {
-        match self.data.get_mut(name) {
-            Some(data) => Some(data),
-            None => None,
+            Ok(val) => Ok(val),
         }
     }
 
     fn clear(self: &mut ECMAScriptDatamodel) {}
 
-    fn execute(&mut self, script: &str) -> Result<String, String> {
+    fn execute(&mut self, script: &Data) -> Result<Data, String> {
         self.execute_internal(script, true)
     }
 
@@ -703,7 +691,7 @@ impl Datamodel for ECMAScriptDatamodel {
                         // Iterate through all members
                         let ob = obj.borrow();
                         let p = ob.properties();
-                        let mut idx: i64 = 1;
+                        let mut idx: i64 = 0;
 
                         if self.assign_internal(item_name, "null", true) {
                             for item_prop in p.index_property_values() {
@@ -749,16 +737,22 @@ impl Datamodel for ECMAScriptDatamodel {
         }
     }
 
-    fn execute_condition(&mut self, script: &str) -> Result<bool, String> {
+    fn execute_condition(&mut self, script: &Data) -> Result<bool, String> {
         // W3C:
         // B.2.3 Conditional Expressions
         //   The Processor must convert ECMAScript expressions used in conditional expressions into their effective boolean value using the ToBoolean operator
         //   as described in Section 9.2 of [ECMASCRIPT-262].
-        let to_boolean_expression = format!("({})?true:false", script);
-        match self.execute_internal(to_boolean_expression.as_str(), false) {
-            Ok(val) => match bool::from_str(val.as_str()) {
-                Ok(v) => Ok(v),
-                Err(e) => Err(e.to_string()),
+        let to_boolean_expression = format!("({})?true:false", script.as_script());
+        match self.execute_internal(&Data::Source(to_boolean_expression.clone()), false) {
+            Ok(val) => {
+                match val {
+                    Data::Boolean(b) => {
+                        Ok(b)
+                    },
+                    _ => {
+                        Ok(false)
+                    }
+                }
             },
             Err(msg) => Err(msg),
         }

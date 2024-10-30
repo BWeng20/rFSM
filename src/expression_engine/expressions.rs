@@ -1,28 +1,13 @@
 //! Implementation of a simple expression parser.
 
-use std::collections::HashMap;
 use crate::datamodel::{Data, ToAny};
 use std::fmt::Debug;
-use crate::actions::ActionWrapper;
-use crate::fsm::GlobalData;
 
-pub struct Context {
-    pub values: HashMap<String, Data>,
-    pub null : Data,
-    pub actions: ActionWrapper,
-    pub global_data: GlobalData
-}
-
-impl Context {
-
-    pub fn new() -> Context {
-        Context {
-            values : HashMap::new(),
-            null: Data::Null(),
-            actions: ActionWrapper::new(),
-            global_data: GlobalData::new()
-        }
-    }
+pub trait ExpressionContext {
+    fn get_null(&self) -> &Data;
+    fn get_data(&self, key : &String ) -> Option<&Data>;
+    fn set_data(&mut self, key : String, data : Data );
+    fn execute_action(&mut self, key : &String, arguments: &[Data]) -> Result<Data, String>;
 }
 
 #[derive(Debug, PartialEq)]
@@ -33,7 +18,7 @@ pub enum ExpressionResult {
 }
 
 impl ExpressionResult {
-    pub fn get_value(&self, context: &Context) -> Result<Data,String> {
+    pub fn get_value(&self, context: &dyn ExpressionContext) -> Result<Data,String> {
         match self {
             ExpressionResult::Data(data) => {
                 Ok(data.clone())
@@ -61,7 +46,7 @@ impl ExpressionResult {
                             }
                         }
                     } else {
-                        match context.values.get(s) {
+                        match context.get_data(s) {
                             None => {
                                 break;
                             }
@@ -85,14 +70,49 @@ impl ExpressionResult {
 }
 
 pub trait Expression : ToAny + Debug {
-    fn execute(&self, context: &mut Context) -> ExpressionResult;
-    fn assign(&self, context: &mut Context, value : &Data ) -> ExpressionResult;
+    fn execute(&self, context: &mut dyn ExpressionContext) -> ExpressionResult;
+    fn assign(&self, context: &mut dyn ExpressionContext, value : &Data ) -> ExpressionResult;
 }
 
 pub fn get_expression_as<T: 'static>(ec: &dyn Expression) -> Option<&T> {
     let va = ec.as_any();
     va.downcast_ref::<T>()
 }
+
+#[derive(Debug)]
+pub struct ExpressionArray {
+    pub array: Vec<Box<dyn Expression>>,
+}
+
+impl ExpressionArray {
+    pub fn new(array : Vec<Box<dyn Expression>> ) -> ExpressionArray {
+        ExpressionArray {
+            array,
+        }
+    }
+}
+
+impl Expression for ExpressionArray {
+    fn execute(&self, context: &mut dyn ExpressionContext) -> ExpressionResult {
+        let mut v = Vec::with_capacity(self.array.len());
+        for item in &self.array {
+            match item.execute(context).get_value(context) {
+                Ok(data) => {
+                    v.push( data );
+                }
+                Err(err) => {
+                    return ExpressionResult::Error(err);
+                }
+            }
+        }
+        ExpressionResult::Data(Data::Array(v))
+    }
+
+    fn assign(&self, _context: &mut dyn ExpressionContext, _value : &Data ) -> ExpressionResult {
+        ExpressionResult::Error("Can't assign a value to a method".to_string())
+    }
+}
+
 
 #[derive(Debug)]
 pub struct ExpressionMethod {
@@ -110,7 +130,7 @@ impl ExpressionMethod {
 }
 
 impl Expression for ExpressionMethod {
-    fn execute(&self, context: &mut Context) -> ExpressionResult {
+    fn execute(&self, context: &mut dyn ExpressionContext) -> ExpressionResult {
         let mut v = Vec::with_capacity(self.arguments.len());
         for arg in &self.arguments {
             match arg.execute(context).get_value(context) {
@@ -122,24 +142,17 @@ impl Expression for ExpressionMethod {
                 }
             }
         }
-        match context.actions.lock().get(self.method.as_str() ) {
-            None => {
-                todo!()
+        match context.execute_action(&self.method, v.as_slice()) {
+            Ok(result) => {
+                ExpressionResult::Data(result)
             }
-            Some(action) => {
-                match action.execute( v.as_slice(), &context.global_data) {
-                    Ok(result) => {
-                        ExpressionResult::Data(result)
-                    }
-                    Err(err) => {
-                        ExpressionResult::Error(err)
-                    }
-                }
+            Err(err) => {
+                ExpressionResult::Error(err)
             }
         }
     }
 
-    fn assign(&self, _context: &mut Context, _value : &Data ) -> ExpressionResult {
+    fn assign(&self, _context: &mut dyn ExpressionContext, _value : &Data ) -> ExpressionResult {
         ExpressionResult::Error("Can't assign a value to a method".to_string())
     }
 }
@@ -156,11 +169,11 @@ impl ExpressionConstant {
 }
 
 impl Expression for ExpressionConstant {
-    fn execute(&self, _context: &mut Context) -> ExpressionResult {
+    fn execute(&self, _context: &mut dyn ExpressionContext) -> ExpressionResult {
         ExpressionResult::Data(self.data.clone())
     }
 
-    fn assign(&self, _context: &mut Context, _value: &Data) -> ExpressionResult {
+    fn assign(&self, _context: &mut dyn ExpressionContext, _value: &Data) -> ExpressionResult {
         ExpressionResult::Error("Can't assign a value to a Constant".to_string())
     }
 }
@@ -180,16 +193,20 @@ impl ExpressionVariable {
 }
 
 impl Expression for ExpressionVariable {
-    fn execute(&self, context: &mut Context) -> ExpressionResult {
-        if context.values.contains_key(self.name.as_str()) {
-            ExpressionResult::VariableReference(vec!(self.name.clone()))
-        } else {
-            ExpressionResult::Error(format!("Variable '{}' not found", self.name))
+    fn execute(&self, context: &mut dyn ExpressionContext) -> ExpressionResult {
+        match context.get_data(&self.name) {
+            Some(_) => {
+                ExpressionResult::VariableReference(vec!(self.name.clone()))
+            }
+            None => {
+                ExpressionResult::Error(format!("Variable '{}' not found", self.name))
+            }
         }
     }
 
-    fn assign(&self, context: &mut Context, value: &Data) -> ExpressionResult {
-        context.values.insert(self.name.clone(), value.clone());
+    fn assign(&self, context: &mut dyn ExpressionContext, value: &Data) -> ExpressionResult {
+        println!("assign {:?} = {}", self, value);
+        context.set_data(self.name.clone(), value.clone());
         return ExpressionResult::Data(value.clone());
     }
 }
@@ -228,7 +245,7 @@ impl ExpressionMemberAccess {
 }
 
 impl Expression for ExpressionMemberAccess {
-    fn execute(&self, context: &mut Context) -> ExpressionResult {
+    fn execute(&self, context: &mut dyn ExpressionContext) -> ExpressionResult {
         let left_result = self.left.execute(context);
         match left_result {
             ExpressionResult::Data(data) => {
@@ -255,7 +272,7 @@ impl Expression for ExpressionMemberAccess {
         }
     }
 
-    fn assign(&self,  context: &mut Context, value: &Data) -> ExpressionResult {
+    fn assign(&self, context: &mut dyn ExpressionContext, value: &Data) -> ExpressionResult {
         let left_result = self.left.execute(context);
         match left_result {
             ExpressionResult::Data(data) => {
@@ -297,7 +314,7 @@ impl ExpressionAssign {
 
 impl Expression for ExpressionAssign {
 
-    fn execute(&self, context: &mut Context) -> ExpressionResult {
+    fn execute(&self, context: &mut dyn ExpressionContext) -> ExpressionResult {
         let right_result = self.right.execute(context).get_value(context);
         match right_result {
             Ok(data) => {
@@ -309,7 +326,7 @@ impl Expression for ExpressionAssign {
         }
     }
 
-    fn assign(&self, _context: &mut Context, _value: &Data) -> ExpressionResult {
+    fn assign(&self, _context: &mut dyn ExpressionContext, _value: &Data) -> ExpressionResult {
         todo!()
     }
 }
@@ -334,9 +351,10 @@ impl ExpressionOperator {
 }
 
 impl Expression for ExpressionOperator {
-    fn execute(&self, context: &mut Context) -> ExpressionResult {
+    fn execute(&self, context: &mut dyn ExpressionContext) -> ExpressionResult {
         let left_result = self.left.execute(context).get_value(context);
         let right_result = self.right.execute(context).get_value(context);
+        println!("execute {:?} {:?}  {:?}", left_result, self.operator, right_result );
         match right_result {
             Ok(rd) => {
                 match left_result {
@@ -359,7 +377,7 @@ impl Expression for ExpressionOperator {
         }
     }
 
-    fn assign(&self, _context: &mut Context, _value: &Data) -> ExpressionResult {
+    fn assign(&self, _context: &mut dyn ExpressionContext, _value: &Data) -> ExpressionResult {
         todo!()
     }
 }

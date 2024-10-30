@@ -29,22 +29,22 @@ See [SW Design](SW_Design.md)
 
 ## Crate Features
 
-| Name                      | Description                                                              | Related crates                                            | Size in Release Build        |
-|---------------------------|--------------------------------------------------------------------------|-----------------------------------------------------------|------------------------------|
-| ECMAScript                | Adds an EMCAScript datamodel implementation.                             | boa_engine                                                | +&#160;~&#160;10.25&#160;MiB |
-| RfsmExpressionModel       | Adds a datamodel implementation bases on the internal Expression-Engine. |                                                           | +&#160;~&#160;0.09&#160;MiB  |
-| xml                       | Enables reading SCXML (xml) files.                                       | quick-xml, reqwest                                        | +&#160;~&#160;2,5&#160;MiB   |
-| serializer                | Read/Writes FSMs in a property binary format - as alternative to xml.    |                                                           | +&#160;~&#160;0.1 MiB        |
-| BasicHttpEventIOProcessor | Adds an implementation of BasicHttpEventIOProcessor                      | hyper, http-body-util, hyper-util, tokio, form_urlencoded | _- not finished -_           |
-| json-config               | The test tool can read configurations in JSON.                           | serde_json                                                | +&#160;~&#160;0.003&#160;MiB |
-| yaml-config               | The test tool can read configurations in YAML.                           | yaml-rust                                                 | -&#160;~&#160;0.001&#160;MiB |
-| EnvLog                    | The crate "env_log" is used as "log" implementation.                     | env_log                                                   | +&#160;~&#160;1.21&#160;MiB  |
-| Trace_Method              | Enables tracing of methods calls in the FSM.                             |                                                           | [^1]                         |
-| Trace_State               | Enables tracing of state changes in the FSM.                             |                                                           | [^1]                         |
-| Trace_Event               | Enables tracing of events in the FSM.                                    |                                                           | [^1]                         |
-| TraceServer               | Enables Remote Tracer Server.                                            |                                                           | _- not finished -_           |
-| Debug_Reader              | Enables debug output in the SCXML reader (a lot).                        |                                                           | _don't use it!_              |
-| Debug                     | Enables additional debug (to fnd errors).                                |                                                           | _don't use it!_              |
+| Name                      | Description                                                              | Related crates                                            | Impact on Size<br/>of Release Build |
+|---------------------------|--------------------------------------------------------------------------|-----------------------------------------------------------|-------------------------------------|
+| ECMAScript                | Adds an EMCAScript datamodel implementation.                             | boa_engine                                                | +&#160;~&#160;10.25&#160;MiB        |
+| RfsmExpressionModel       | Adds a datamodel implementation bases on the internal Expression-Engine. |                                                           | +&#160;~&#160;0.09&#160;MiB         |
+| xml                       | Enables reading SCXML (xml) files.                                       | quick-xml, reqwest                                        | +&#160;~&#160;2,5&#160;MiB          |
+| serializer                | Read/Writes FSMs in a property binary format - as alternative to xml.    |                                                           | +&#160;~&#160;0.1 MiB               |
+| BasicHttpEventIOProcessor | Adds an implementation of BasicHttpEventIOProcessor                      | hyper, http-body-util, hyper-util, tokio, form_urlencoded | _- not finished -_                  |
+| json-config               | The test tool can read configurations in JSON.                           | serde_json                                                | +&#160;~&#160;0.003&#160;MiB        |
+| yaml-config               | The test tool can read configurations in YAML.                           | yaml-rust                                                 | -&#160;~&#160;0.001&#160;MiB        |
+| EnvLog                    | The crate "env_log" is used as "log" implementation.                     | env_log                                                   | +&#160;~&#160;1.21&#160;MiB         |
+| Trace_Method              | Enables tracing of methods calls in the FSM.                             |                                                           | [^1]                                |
+| Trace_State               | Enables tracing of state changes in the FSM.                             |                                                           | [^1]                                |
+| Trace_Event               | Enables tracing of events in the FSM.                                    |                                                           | [^1]                                |
+| TraceServer               | Enables Remote Tracer Server.                                            |                                                           | _- not finished -_                  |
+| Debug_Reader              | Enables debug output in the SCXML reader (a lot).                        |                                                           | _don't use it!_                     |
+| Debug                     | Enables additional debug (to fnd errors).                                |                                                           | _don't use it!_                     |
 
 The trace options <i>Trace_xxx</i> still needed to be activated during runtime by settings the trace-mode.
 If none of the <i>Trace_xxx</i> features are used, "Tracer" module is completely removed.
@@ -92,15 +92,15 @@ To add new data-models, use function `rfsm::fsm::register_datamodel`.
 + The Null-Datamodel, use `datamodel="null"`
 + Internal Expression Engine Datamodel, use `datamodel="rfsm-expression"`. Available if feature _"RfsmExpressionModel"_ is turned on.
 
-As the EMCAScript-Datamodel is based on boa-engine, it result is a huge binary. 
+As the EMCAScript-Datamodel is based on boa-engine, it results in a huge binary. 
 If you need only basic logic in your scripts, use "rfsm-expression" instead.
 
 ### Custom Actions
 
 You can use the trait "Action" to add custom functions to the FSM. See the Examples for a How-To.
-Each FSM instance can have a different set of Actions. Action are inherited by child-session.
+Each FSM instance can have a different set of Actions. Action are inherited by child-sessions.
 
-If using ECMAScript, these actions can be called like normal methods. Arguments and return values will be converted 
-from and to JavaScript values. See enum "Data" for supported data-types.
+If using ECMAScript- or RfsmExpressions-Datamodel, these actions can be called like normal methods. 
+Arguments and return values will be converted from and to JavaScript/Data-values. See enum "Data" for supported data-types.
 
 Actions have full access to the data and states of the FSM.

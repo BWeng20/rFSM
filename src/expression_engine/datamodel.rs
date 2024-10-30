@@ -1,17 +1,16 @@
 //! Implements the SCXML Data model for rFSM Expressions.\
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::ops::{DerefMut};
 
-use log::error;
+use log::{debug, error};
 
 use crate::datamodel::{
-    Data, Datamodel, DatamodelFactory, DataStore, EVENT_VARIABLE_FIELD_DATA, EVENT_VARIABLE_FIELD_INVOKE_ID,
+    Data, Datamodel, DatamodelFactory, EVENT_VARIABLE_FIELD_DATA, EVENT_VARIABLE_FIELD_INVOKE_ID,
     EVENT_VARIABLE_FIELD_NAME, EVENT_VARIABLE_FIELD_ORIGIN, EVENT_VARIABLE_FIELD_ORIGIN_TYPE,
     EVENT_VARIABLE_FIELD_SEND_ID, EVENT_VARIABLE_FIELD_TYPE, EVENT_VARIABLE_NAME, GlobalDataArc,
 };
-use crate::event_io_processor::EventIOProcessor;
-use crate::expression_engine::expressions::Context;
+use crate::expression_engine::expressions::ExpressionContext;
 use crate::expression_engine::parser::ExpressionParser;
 use crate::fsm::{Event, ExecutableContentId, Fsm};
 
@@ -19,52 +18,82 @@ pub const RFSM_EXPRESSION_DATAMODEL: &str = "RFSM-EXPRESSION";
 pub const RFSM_EXPRESSION_DATAMODEL_LC: &str = "rfsm-expression";
 
 pub struct RFsmExpressionDatamodel {
-    pub data: DataStore,
     pub global_data: GlobalDataArc,
 }
 
 impl RFsmExpressionDatamodel {
     pub fn new(global_data: GlobalDataArc) -> RFsmExpressionDatamodel {
         RFsmExpressionDatamodel {
-            data: DataStore::new(),
             global_data,
         }
     }
 
-    fn assign_internal(&mut self, _left_expr: &str, _right_expr: &str, _allow_undefined: bool) -> bool {
-        todo!()
+    fn set( &mut self, name: &str, data : Data) {
+        println!("set {} = {}", name, data);
+        self.global_data.lock().set_data(name.to_string(), data);
     }
 
-    fn execute_internal(&mut self, script: &str, handle_error: bool) -> Result<Data, String> {
+    fn assign_internal(&mut self, left_expr: &str, right_expr: &str, allow_undefined: bool) -> bool {
+        let exp = format!("{}={}", left_expr, right_expr);
+        println!("assign_internal {} ", exp);
+
+        let ex = ExpressionParser::execute(exp, self.global_data.lock().deref_mut() );
+        let r = match ex {
+            Ok(_) => true,
+            Err(error) => {
+                // W3C says:\
+                // If the location expression does not denote a valid location in the data model or
+                // if the value specified (by 'expr' or children) is not a legal value for the
+                // location specified, the SCXML Processor must place the error 'error.execution'
+                // in the internal event queue.
+                self.log(
+                    format!(
+                        "Could not assign {}={}, '{}'.",
+                        left_expr, right_expr, error
+                    ).as_str(),
+                );
+
+                self.internal_error_execution();
+                false
+            }
+        };
+        r
+    }
+
+    fn execute_internal(&mut self, script: &Data, handle_error: bool) -> Result<Data, String> {
         // TODO
-        let mut ctx = Context::new();
-        let result = ExpressionParser::execute(script.to_string(), &mut ctx);
-        match result {
-            Ok(res) => {
-                if let Data::Null() = res {
-                    #[cfg(feature = "Debug")]
-                    debug!("Execute: {} => undefined", script);
-                    Ok(res)
-                } else if let Data::Error(err) = res {
-                    let msg = format!("Script Error: {} => {}", script, err);
-                    error!("{}", msg);
-                    if handle_error {
-                        self.internal_error_execution();
+        println!("execute_internal {:?} ", script);
+
+        if let Data::Source(source) = script {
+            let result = ExpressionParser::execute(source.clone(), self.global_data.lock().deref_mut());
+            match result {
+                Ok(res) => {
+                    if let Data::Null() = res {
+                        Ok(res)
+                    } else if let Data::Error(err) = res {
+                        let msg = format!("Script Error: {} => {}", script, err);
+                        error!("{}", msg);
+                        if handle_error {
+                            self.internal_error_execution();
+                        }
+                        Err(msg)
+                    } else {
+                        Ok(res)
                     }
+                }
+                Err(e) => {
+                    // Pretty print the error
+                    let msg = format!("Script Error:  {} => {} ", script, e);
+                    error!("{}", msg);
                     Err(msg)
-                } else {
-                    Ok(res)
                 }
             }
-            Err(e) => {
-                // Pretty print the error
-                let msg = format!("Script Error:  {} => {} ", script, e);
-                error!("{}", msg);
-                Err(msg)
-            }
+        } else {
+            Ok( script.clone() )
         }
     }
 }
+
 
 pub struct RFsmExpressionDatamodelFactory {}
 
@@ -93,54 +122,57 @@ impl Datamodel for RFsmExpressionDatamodel {
         RFSM_EXPRESSION_DATAMODEL
     }
 
-    fn set_from_data_store(&mut self, data: &DataStore, set_data: bool) {
-        for (name, data) in &data.values {
+    fn set_from_state_data(&mut self, data: &HashMap<String,Data>, set_data: bool) {
+        for (name, value) in data {
             if set_data {
-                if let Data::String(dv) = data {
-                    // TODO
-                    let mut ctx = Context::new();
-
-                    let rs = ExpressionParser::execute(dv.clone(), &mut ctx);
-                    match rs {
-                        Ok(val) => {
-                            self.data.set(name.as_str(), val);
+                if let Data::Source(src) = value {
+                    if !src.is_empty() {
+                        // The data from state-data needs to be evaluated
+                        // TODO: Escape
+                        let rs = ExpressionParser::execute(
+                            src.clone(),
+                            self.global_data.lock().deref_mut());
+                        match rs {
+                            Ok(val) => {
+                                self.set(name, val);
+                            }
+                            Err(err) => {
+                                error!("Error on Initialize '{}': {}", name, err);
+                                // W3C says:
+                                // If the value specified for a <data> element (by 'src', children, or
+                                // the environment) is not a legal data value, the SCXML Processor MUST
+                                // raise place error.execution in the internal event queue and MUST
+                                // create an empty data element in the data model with the specified id.
+                                self.set(name, Data::Null());
+                                self.internal_error_execution();
+                            }
                         }
-                        Err(err) => {
-                            error!("Error on Initialize '{}': {}", name, err);
-                            // W3C says:
-                            // If the value specified for a <data> element (by 'src', children, or
-                            // the environment) is not a legal data value, the SCXML Processor MUST
-                            // raise place error.execution in the internal event queue and MUST
-                            // create an empty data element in the data model with the specified id.
-                            self.data.set(name.as_str(), Data::Null());
-                            self.internal_error_execution();
-                        }
+                    } else {
+                        self.set(name, Data::Null());
                     }
                 } else {
-                    self.data.set(name.as_str(), data.clone());
+                    self.set(name, value.clone());
                 }
-            } else {
-                self.data.set(name.as_str(), Data::Null());
             }
         }
     }
 
     fn add_functions(&mut self, _fsm: &mut Fsm) {}
 
-    fn initialize_read_only(&mut self, name: &str, value: &str) {
+    fn initialize_read_only(&mut self, name: &str, value: Data) {
         // TODO
-        self.data.set(name, Data::String(value.to_string()));
+        self.set(&name.to_string(), value);
     }
 
     fn set(&mut self, name: &str, data: Data) {
-        self.data.set(name, data);
+        self.set(&name.to_string(), data);
     }
 
     fn set_event(&mut self, event: &Event) {
         let data_value = match &event.param_values {
             None => match &event.content {
                 None => Data::Null(),
-                Some(c) => Data::String(c.clone()),
+                Some(c) => c.clone(),
             },
             Some(pv) => {
                 let mut data = HashMap::with_capacity(pv.len());
@@ -179,48 +211,166 @@ impl Datamodel for RFsmExpressionDatamodel {
         );
         event_props.insert(EVENT_VARIABLE_FIELD_DATA.to_string(), data_value);
 
-        self.data.set(EVENT_VARIABLE_NAME, Data::Map(event_props));
+        self.set(EVENT_VARIABLE_NAME, Data::Map(event_props));
     }
 
     fn assign(&mut self, left_expr: &str, right_expr: &str) -> bool {
         self.assign_internal(left_expr, right_expr, false)
     }
 
-    fn get_by_location(&mut self, _location: &str) -> Result<Data, String> {
-        todo!()
-    }
-
-    fn get_io_processor(&mut self, _name: &str) -> Option<Arc<Mutex<Box<dyn EventIOProcessor>>>> {
-        todo!()
-    }
-
-    fn send(&mut self, _ioc_processor: &str, _target: &str, _event: Event) -> bool {
-        todo!()
-    }
-
-    fn get_mut(&mut self, _name: &str) -> Option<&mut Data> {
-        todo!()
+    fn get_by_location(&mut self, location: &str) -> Result<Data, String> {
+        match self.execute_internal(&Data::Source(location.to_string()), false) {
+            Err(msg) => {
+                self.internal_error_execution();
+                Err(msg)
+            }
+            Ok(val) => Ok(val),
+        }
     }
 
     fn clear(&mut self) {}
 
-    fn execute(&mut self, script: &str) -> Result<String, String> {
-        let r = self.execute_internal(script, true)?;
-        Ok(r.to_string())
+    fn execute(&mut self, script: &Data) -> Result<Data, String> {
+        match self.execute_internal(script, true)
+        {
+            Ok(r) => {
+                match r {
+                    Data::Double(_) |
+                    Data::Source(_) |
+                    Data::String(_) |
+                    Data::Boolean(_) |
+                    Data::Null() |
+                    Data::None() |
+                    Data::Integer(_) => {
+                        Ok(r)
+                    }
+                    Data::Array(_) => {
+                        Err("Illegal Result: Can't return array".to_string())
+                    }
+                    Data::Map(_) => {
+                        Err("Illegal Result: Can't return maps".to_string())
+                    }
+                    Data::Error(err) => {
+                        Err(err)
+                    }
+                }
+            }
+            Err(err) => {
+                Err(err)
+            }
+        }
     }
 
     fn execute_for_each(
         &mut self,
-        _array_expression: &str,
-        _item: &str,
-        _index: &str,
-        _execute_body: &mut dyn FnMut(&mut dyn Datamodel) -> bool,
+        array_expression: &str,
+        item_name: &str,
+        index: &str,
+        execute_body: &mut dyn FnMut(&mut dyn Datamodel) -> bool,
     ) -> bool {
-        todo!()
+        #[cfg(feature = "Debug")]
+        debug!("ForEach: array: {}", array_expression);
+        let data = ExpressionParser::execute(array_expression.to_string(), self.global_data.lock().deref_mut() );
+        match data {
+            Ok(r) => {
+                match r {
+                    Data::Map(map) => {
+                        let mut idx: i64 = 0;
+                        if self.assign_internal(item_name, "null", true) {
+                            for (name, item_value) in map {
+                                #[cfg(feature = "Debug")]
+                                debug!("ForEach: #{} {} {}={:?}", idx, name, item_name, item_value);
+                                self.set( item_name, item_value.clone());
+                                if !index.is_empty() {
+                                    self.set(index, Data::Integer(idx));
+                                }
+                                if !execute_body(self) {
+                                    return false;
+                                }
+                                idx += 1;
+                            }
+                        }
+                    },
+                    Data::Array(array) => {
+                        let mut idx: i64 = 0;
+                        if self.assign_internal(item_name, "null", true) {
+                            for item_value in array {
+                                #[cfg(feature = "Debug")]
+                                debug!("ForEach: #{} {:?}", idx, item_value);
+                                self.set( item_name, item_value.clone());
+                                if !index.is_empty() {
+                                    self.set(index, Data::Integer(idx));
+                                }
+                                if !execute_body(self) {
+                                    return false;
+                                }
+                                idx += 1;
+                            }
+                        }
+                    },
+                    _ => {
+                        self.log("Resulting value is not a supported collection.");
+                        self.internal_error_execution();
+                    }
+                }
+                true
+            }
+            Err(e) => {
+                self.log(&e.to_string());
+                false
+            }
+        }
     }
 
-    fn execute_condition(&mut self, _script: &str) -> Result<bool, String> {
-        todo!();
+    fn execute_condition(&mut self, script: &Data) -> Result<bool, String> {
+        // W3C:
+        // B.2.3 Conditional Expressions
+        //   The Processor must convert ECMAScript expressions used in conditional expressions into their effective boolean
+        //   value using the ToBoolean operator as described in Section 9.2 of [ECMASCRIPT-262].
+        // EMCA says:
+        //  1. If argument is a Boolean, return argument.
+        //  2. If argument is one of undefined, null, +0𝔽, -0𝔽, NaN, 0ℤ, or the empty String, return false.
+        //  3. If argument is an Object and argument has an [[IsHTMLDDA]] internal slot, return false.
+        //     Remark: we have no such thing here.
+        //  4. Return true.
+        let r =
+        match self.execute_internal(script, false) {
+            Ok(val) => {
+                match val {
+                    Data::Integer(v) => {
+                        Ok( !(v != v || v.abs() == 0) )
+                    }
+                    Data::Double(v) => {
+                        Ok( !(v != v || v.abs() == 0f64) )
+                    }
+                    Data::Source(s) |
+                    Data::String(s) => {
+                        Ok( !s.is_empty() )
+                    }
+                    Data::Boolean(b) => {
+                        Ok(b)
+                    }
+                    Data::Array(_) => {
+                        Ok(true)
+                    }
+                    Data::Map(_) => {
+                        Ok(true)
+                    }
+                    Data::Null() => {
+                        Ok(false)
+                    }
+                    Data::None() => {
+                        Ok(false)
+                    }
+                    Data::Error(error) => {
+                        Err(error)
+                    }
+                }
+            },
+            Err(msg) => Err(msg),
+        };
+        println!("execute_condition {} => {:?}", script, r);
+        r
     }
 
     #[allow(non_snake_case)]

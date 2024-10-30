@@ -83,7 +83,7 @@ pub trait ExecutableContentTracer {
 #[derive(Default)]
 pub struct Cancel {
     pub send_id: String,
-    pub send_id_expr: String,
+    pub send_id_expr: Data,
 }
 
 /// Holds all parameters of a \<send\> call.
@@ -96,21 +96,21 @@ pub struct SendParameters {
     /// In case the id is generated, the parent state of the send.
     pub parent_state_name: String,
     /// SCXML \<send\> attribute 'event'.
-    pub event: String,
+    pub event: Data,
     /// SCXML \<send\> attribute 'eventexpr'.
-    pub event_expr: String,
+    pub event_expr: Data,
     /// SCXML \<send\> attribute 'target'.
-    pub target: String,
+    pub target: Data,
     /// SCXML \<send\> attribute 'targetexpr'.
-    pub target_expr: String,
+    pub target_expr: Data,
     /// SCXML \<send\> attribute 'type'.
-    pub type_value: String,
+    pub type_value: Data,
     /// SCXML \<send\> attribute 'typeexpr'.
-    pub type_expr: String,
+    pub type_expr: Data,
     /// SCXML \<send\> attribute 'delay' in milliseconds.
     pub delay_ms: u64,
     /// SCXML \<send\> attribute 'delayexpr'.
-    pub delay_expr: String,
+    pub delay_expr: Data,
     /// SCXML \<send\> attribute 'namelist'. Must not be specified in conjunction with 'content'.
     pub name_list: Vec<String>,
     /// \<param\> children
@@ -124,14 +124,14 @@ impl SendParameters {
             name_location: "".to_string(),
             name: "".to_string(),
             parent_state_name: "".to_string(),
-            event: "".to_string(),
-            event_expr: "".to_string(),
-            target: "".to_string(),
-            target_expr: "".to_string(),
-            type_value: "".to_string(),
-            type_expr: "".to_string(),
+            event: Data::None(),
+            event_expr: Data::None(),
+            target: Data::None(),
+            target_expr: Data::None(),
+            type_value: Data::None(),
+            type_expr: Data::None(),
             delay_ms: 0,
-            delay_expr: "".to_string(),
+            delay_expr: Data::None(),
             name_list: Vec::new(),
             params: None,
             content: None,
@@ -149,7 +149,7 @@ impl Cancel {
     pub fn new() -> Cancel {
         Cancel {
             send_id: String::new(),
-            send_id_expr: String::new(),
+            send_id_expr: Data::None(),
         }
     }
 }
@@ -170,18 +170,18 @@ pub struct Script {
 
 #[derive(Debug, Default)]
 pub struct Expression {
-    pub content: String,
+    pub content: Data,
 }
 
 #[derive(Debug, Default)]
 pub struct Log {
     pub label: String,
-    pub expression: String,
+    pub expression: Data,
 }
 
 #[derive(Debug, Default)]
 pub struct If {
-    pub condition: String,
+    pub condition: Data,
     pub content: ExecutableContentId,
     pub else_content: ExecutableContentId,
 }
@@ -307,7 +307,7 @@ impl ExecutableContent for Script {
 impl Expression {
     pub fn new() -> Expression {
         Expression {
-            content: String::new(),
+            content: Data::Source(String::new()),
         }
     }
 }
@@ -323,7 +323,7 @@ impl ExecutableContent for Expression {
     }
 
     fn trace(&self, tracer: &mut dyn ExecutableContentTracer, _fsm: &Fsm) {
-        tracer.print_name_and_attributes(self, &[("content", &self.content)]);
+        tracer.print_name_and_attributes(self, &[("content", &self.content.to_string())]);
     }
 }
 
@@ -331,7 +331,7 @@ impl Log {
     pub fn new(label: &Option<&String>, expression: &str) -> Log {
         Log {
             label: label.unwrap_or(&"".to_string()).clone(),
-            expression: expression.to_string(),
+            expression: Data::Source(expression.to_string()),
         }
     }
 }
@@ -340,7 +340,7 @@ impl ExecutableContent for Log {
     fn execute(&self, datamodel: &mut dyn Datamodel, _fsm: &Fsm) -> bool {
         match &datamodel.execute(&self.expression) {
             Ok(msg) => {
-                datamodel.log(msg);
+                datamodel.log(msg.to_string().as_str());
                 true
             }
             Err(_msg) => false,
@@ -352,14 +352,14 @@ impl ExecutableContent for Log {
     }
 
     fn trace(&self, tracer: &mut dyn ExecutableContentTracer, _fsm: &Fsm) {
-        tracer.print_name_and_attributes(self, &[("expression", &self.expression)]);
+        tracer.print_name_and_attributes(self, &[("expression", &self.expression.to_string())]);
     }
 }
 
 impl If {
     pub fn new(condition: &str) -> If {
         If {
-            condition: condition.to_string(),
+            condition: Data::Source(condition.to_string()),
             content: 0,
             else_content: 0,
         }
@@ -397,7 +397,7 @@ impl ExecutableContent for If {
     }
 
     fn trace(&self, tracer: &mut dyn ExecutableContentTracer, fsm: &Fsm) {
-        tracer.print_name_and_attributes(self, &[("condition", &self.condition)]);
+        tracer.print_name_and_attributes(self, &[("condition", &self.condition.to_string())]);
         tracer.print_sub_content("then", fsm, self.content);
         tracer.print_sub_content("else", fsm, self.else_content);
     }
@@ -481,9 +481,9 @@ impl ExecutableContent for Cancel {
     /// the event has already been delivered by the time the \<cancel> tag executes.
     fn execute(&self, datamodel: &mut dyn Datamodel, _fsm: &Fsm) -> bool {
         if let Ok(send_id) =
-            datamodel.get_expression_alternative_value(self.send_id.as_str(), self.send_id_expr.as_str())
+            datamodel.get_expression_alternative_value(&Data::Source(self.send_id.clone()), &self.send_id_expr)
         {
-            get_global!(datamodel).delayed_send.remove(&send_id);
+            get_global!(datamodel).delayed_send.remove(&send_id.to_string());
         };
         true
     }
@@ -497,7 +497,7 @@ impl ExecutableContent for Cancel {
             self,
             &[
                 ("sendid", &self.send_id),
-                ("sendidexpr", &self.send_id_expr),
+                ("sendidexpr", &self.send_id_expr.to_string()),
             ],
         );
     }
@@ -508,7 +508,7 @@ impl ExecutableContent for SendParameters {
     /// If unable to dispatch, place "error.communication" in internal queue
     /// If target is not supported, place "error.execution" in internal queue
     fn execute(&self, datamodel: &mut dyn Datamodel, fsm: &Fsm) -> bool {
-        let target = match datamodel.get_expression_alternative_value(self.target.as_str(), self.target_expr.as_str()) {
+        let target = match datamodel.get_expression_alternative_value(&self.target, &self.target_expr) {
             Ok(value) => value,
             Err(_) => {
                 // Error -> abort
@@ -516,7 +516,7 @@ impl ExecutableContent for SendParameters {
             }
         };
 
-        let event_name = match datamodel.get_expression_alternative_value(self.event.as_str(), self.event_expr.as_str())
+        let event_name = match datamodel.get_expression_alternative_value(&self.event, &self.event_expr)
         {
             Ok(value) => value,
             Err(_) => {
@@ -582,7 +582,7 @@ impl ExecutableContent for SendParameters {
                     // Error -> Abort
                     return false;
                 }
-                Ok(delay) => parse_duration_to_milliseconds(&delay),
+                Ok(delay) => parse_duration_to_milliseconds(&delay.to_string()),
             }
         } else {
             self.delay_ms as i64
@@ -595,13 +595,13 @@ impl ExecutableContent for SendParameters {
             return false;
         }
 
-        if delay_ms > 0 && target.eq(SCXML_TARGET_INTERNAL) {
+        if delay_ms > 0 && target.to_string().eq(SCXML_TARGET_INTERNAL) {
             // Can't send via internal queue
             error!("Send: illegal delay for target {}", target);
             datamodel.internal_error_execution_for_event(&send_id, &fsm.caller_invoke_id);
             return false;
         }
-        let type_result = datamodel.get_expression_alternative_value(self.type_value.as_str(), self.type_expr.as_str());
+        let type_result = datamodel.get_expression_alternative_value(&self.type_value, &self.type_expr);
 
         let type_val = match type_result {
             Ok(val) => val,
@@ -612,13 +612,16 @@ impl ExecutableContent for SendParameters {
             }
         };
 
-        let mut type_val_str = type_val.as_str();
-        if type_val_str.is_empty() {
-            type_val_str = SCXML_EVENT_PROCESSOR;
-        }
+        let type_val_string =
+            if type_val.is_empty() {
+                SCXML_EVENT_PROCESSOR.to_string()
+            } else {
+                type_val.to_string()
+            };
+        let type_val_str = type_val_string.as_str();
 
         let event = Event {
-            name: event_name.clone(),
+            name: event_name.to_string(),
             etype: EventType::external,
             sendid: send_id.clone(),
             origin: None,
@@ -642,13 +645,13 @@ impl ExecutableContent for SendParameters {
                 let send_id_clone = send_id.clone();
                 let tg = fsm.schedule(delay_ms, move || {
                     #[cfg(feature = "Debug")]
-                    debug!("send '{}' to '{}'", event, target);
+                    debug!("send {} to {}", event, target);
                     if let Some(sid) = &send_id_clone {
                         global_clone.lock().delayed_send.remove(sid);
                     }
                     iopc.lock()
                         .unwrap()
-                        .send(&global_clone, target.as_str(), event.clone());
+                        .send(&global_clone, target.to_string().as_str(), event.clone());
                 });
                 if let Some(g) = tg {
                     if let Some(sid) = &send_id {
@@ -669,7 +672,7 @@ impl ExecutableContent for SendParameters {
         } else {
             #[cfg(feature = "Debug")]
             debug!("send '{}' to '{}'", event, target);
-            datamodel.send(type_val_str, target.as_str(), event.clone())
+            datamodel.send(type_val_str, &target, event.clone())
         };
 
         if !result {
@@ -691,13 +694,13 @@ impl ExecutableContent for SendParameters {
                 ("name_location", &self.name_location),
                 ("name", &self.name),
                 ("name", &self.name),
-                ("event_expr", &self.event_expr),
-                ("target", &self.target),
-                ("target_expr", &self.target_expr),
-                ("type", &self.type_value),
-                ("type_expr", &self.type_expr),
+                ("event_expr", &self.event_expr.to_string()),
+                ("target", &self.target.to_string()),
+                ("target_expr", &self.target_expr.to_string()),
+                ("type", &self.type_value.to_string()),
+                ("type_expr", &self.type_expr.to_string()),
                 ("delay", &self.delay_ms.to_string()),
-                ("delay_expr", &self.delay_expr),
+                ("delay_expr", &self.delay_expr.to_string()),
                 ("name_list", &vec_to_string(&self.name_list)),
                 ("content", &format!("{:?}", self.content)),
                 ("params", &opt_vec_to_string(&self.params)),
