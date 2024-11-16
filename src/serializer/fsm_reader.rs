@@ -4,9 +4,9 @@
 #[cfg(feature = "Debug_Serializer")]
 use log::debug;
 
+use log::info;
 use std::io::Read;
 use std::time::{SystemTime, UNIX_EPOCH};
-use log::info;
 
 use crate::datamodel::DataStore;
 use crate::executable_content;
@@ -78,7 +78,11 @@ where
             }
 
             let end = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-            info!("'{}' (RFSM) loaded in {}ms", fsm.name, end.as_millis()-start.as_millis() );
+            info!(
+                "'{}' (RFSM) loaded in {}ms",
+                fsm.name,
+                end.as_millis() - start.as_millis()
+            );
 
             Ok(Box::new(fsm))
         } else if self.reader.has_error() {

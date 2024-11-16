@@ -39,6 +39,7 @@ See [SW Design](SW_Design.md)
 | Trace_Method              | Enables tracing of methods calls in the FSM.         |                                                           |
 | Trace_State               | Enables tracing of state changes in the FSM.         |                                                           |
 | Trace_Event               | Enables tracing of events in the FSM.                |                                                           |
+| TraceServer               | Enables Remote Tracer Server.                        |                                                           |
 | xml                       | Enables reading SCXML (xml) files.                   | quick-xml, reqwest                                        |
 | Debug_Reader              | Enables debug output in the SCXML reader (a lot).    |                                                           |
 | Debug                     | Enables additional debug (to fnd errors).            |                                                           |
@@ -48,10 +49,10 @@ If none of the <i>Trace_xxx</i> features are used, "Tracer" module is completely
 
 ## Tracer
 
-The Tracer module is planed to be used as remote monitor or test interface for events and transitions.<br/>
-If not used, the code can be removed by the above feature-switches.
+The Tracer module can be used to monitor events and transitions.<br/>
 
-Currently, it simply prints the traced actions. 
+The default-tracer simply prints the traced actions. If the Remote-Trace-Server is activated, the default-tracer is 
+replaced by a tracer that communicates via the Remote-Trace-Server with some remote-client.   
 
 ## How To Use
 
