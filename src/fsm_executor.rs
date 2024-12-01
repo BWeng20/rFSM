@@ -163,7 +163,7 @@ impl FsmExecutor {
 
         #[allow(unused_variables)]
         #[allow(unused_mut)]
-        let mut sm : Result<Box<Fsm>, String> = Err("".to_string());
+        let mut sm: Result<Box<Fsm>, String> = Err("".to_string());
 
         // Use reader to parse the scxml file:
         #[cfg(feature = "xml")]

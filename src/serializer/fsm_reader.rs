@@ -1,14 +1,14 @@
 //! Module to write a persistent binary version of a Fsm.\
 //! The format is independent of the platform byte-order
 
-use std::collections::HashMap;
 #[cfg(feature = "Debug_Serializer")]
 use log::debug;
+use std::collections::HashMap;
 
+use crate::datamodel::Data;
 use log::info;
 use std::io::Read;
 use std::time::{SystemTime, UNIX_EPOCH};
-use crate::datamodel::Data;
 
 use crate::executable_content;
 use crate::executable_content::{

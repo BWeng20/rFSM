@@ -15,6 +15,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, mem, str, string::String};
 
+use crate::datamodel::Data;
 use crate::ArgOption;
 #[cfg(feature = "Debug_Reader")]
 #[cfg(not(test))]
@@ -23,7 +24,6 @@ use log::info;
 use quick_xml::events::attributes::Attributes;
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
-use crate::datamodel::Data;
 
 use crate::executable_content::{
     get_opt_executable_content_as, get_safe_executable_content_as, parse_duration_to_milliseconds, Assign, Cancel,
@@ -783,46 +783,47 @@ impl ReaderState {
         // but must not have both. Furthermore, if either attribute is present, the element must not have any children.
         // Thus 'src', 'expr' and children are mutually exclusive in the <data> element.
 
-        let data_value =
-            if src.is_some() {
-                if !(expr.is_none() && content.is_empty()) {
-                    panic!(
-                        "{} shall have only {}, {} or children, but not some combination of it.",
-                        TAG_DATA, ATTR_SRC, ATTR_EXPR
-                    );
-                }
+        let data_value = if src.is_some() {
+            if !(expr.is_none() && content.is_empty()) {
+                panic!(
+                    "{} shall have only {}, {} or children, but not some combination of it.",
+                    TAG_DATA, ATTR_SRC, ATTR_EXPR
+                );
+            }
 
-                // W3C:
-                // Gives the location from which the data object should be fetched.
-                // If the 'src' attribute is present, the Platform must fetch the specified object
-                // at the time specified by the 'binding' attribute of \<scxml\> and must assign it as
-                // the value of the data element
+            // W3C:
+            // Gives the location from which the data object should be fetched.
+            // If the 'src' attribute is present, the Platform must fetch the specified object
+            // at the time specified by the 'binding' attribute of \<scxml\> and must assign it as
+            // the value of the data element
 
-                match self.read_from_uri(src.unwrap()) {
-                    Ok(source) => {
-                        #[cfg(feature = "Debug_Reader")]
+            match self.read_from_uri(src.unwrap()) {
+                Ok(source) => {
+                    #[cfg(feature = "Debug_Reader")]
 
-                        debug!("src='{}':\n{}", src.unwrap(), source);
-                        source
-                    }
-                    Err(e) => {
-                        panic!("Can't read data source '{}'. {}", src.unwrap(), e);
-                    }
+                    debug!("src='{}':\n{}", src.unwrap(), source);
+                    source
                 }
-            } else if expr.is_some() {
-                if !content.is_empty() {
-                    panic!(
-                        "{} shall have only {}, {} or children, but not some combination of it.",
-                        TAG_DATA, ATTR_SRC, ATTR_EXPR
-                    );
+                Err(e) => {
+                    panic!("Can't read data source '{}'. {}", src.unwrap(), e);
                 }
-                expr.unwrap().clone()
-            } else if !content.is_empty() {
-                content
-            } else {
-                "".to_string()
-            };
-        self.get_current_state().data.insert(id.to_string(),Data::Source(data_value));
+            }
+        } else if expr.is_some() {
+            if !content.is_empty() {
+                panic!(
+                    "{} shall have only {}, {} or children, but not some combination of it.",
+                    TAG_DATA, ATTR_SRC, ATTR_EXPR
+                );
+            }
+            expr.unwrap().clone()
+        } else if !content.is_empty() {
+            content
+        } else {
+            "".to_string()
+        };
+        self.get_current_state()
+            .data
+            .insert(id.to_string(), Data::Source(data_value));
     }
 
     /// A "initial" element started (the element, not the attribute)
@@ -1347,7 +1348,7 @@ impl ReaderState {
                     TAG_SEND, ATTR_DELAY, ATTR_DELAYEXPR
                 );
             }
-            send_params.delay_expr = Data::Source( delay_expr_attr_value.clone());
+            send_params.delay_expr = Data::Source(delay_expr_attr_value.clone());
         } else if delay_attr.is_some() {
             if (!delay_attr.unwrap().is_empty()) && type_attr.is_some() && type_attr.unwrap().eq(TARGET_INTERNAL) {
                 panic!(

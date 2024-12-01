@@ -5,9 +5,9 @@
 #![allow(dead_code)]
 
 use crate::datamodel::Data;
+use crate::fsm::GlobalData;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
-use crate::fsm::GlobalData;
 
 /// Trait to inject custom actions into the datamodel.
 pub trait Action: Send {

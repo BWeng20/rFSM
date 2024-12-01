@@ -483,7 +483,9 @@ impl ExecutableContent for Cancel {
         if let Ok(send_id) =
             datamodel.get_expression_alternative_value(&Data::Source(self.send_id.clone()), &self.send_id_expr)
         {
-            get_global!(datamodel).delayed_send.remove(&send_id.to_string());
+            get_global!(datamodel)
+                .delayed_send
+                .remove(&send_id.to_string());
         };
         true
     }
@@ -516,8 +518,7 @@ impl ExecutableContent for SendParameters {
             }
         };
 
-        let event_name = match datamodel.get_expression_alternative_value(&self.event, &self.event_expr)
-        {
+        let event_name = match datamodel.get_expression_alternative_value(&self.event, &self.event_expr) {
             Ok(value) => value,
             Err(_) => {
                 // Error -> abort
@@ -612,12 +613,11 @@ impl ExecutableContent for SendParameters {
             }
         };
 
-        let type_val_string =
-            if type_val.is_empty() {
-                SCXML_EVENT_PROCESSOR.to_string()
-            } else {
-                type_val.to_string()
-            };
+        let type_val_string = if type_val.is_empty() {
+            SCXML_EVENT_PROCESSOR.to_string()
+        } else {
+            type_val.to_string()
+        };
         let type_val_str = type_val_string.as_str();
 
         let event = Event {

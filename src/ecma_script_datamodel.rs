@@ -4,7 +4,6 @@
 //! See [GitHub:Boa Engine](https://github.com/boa-dev/boa).
 
 use std::collections::HashMap;
-use std::str::FromStr;
 use std::string::ToString;
 #[cfg(test)]
 use std::{println as warn, println as error};
@@ -31,9 +30,9 @@ use boa_gc::{empty_trace, Finalize, Trace};
 use log::{error, warn};
 
 use crate::datamodel::{
-    Data, Datamodel, DatamodelFactory, GlobalDataArc, EVENT_VARIABLE_FIELD_DATA,
-    EVENT_VARIABLE_FIELD_INVOKE_ID, EVENT_VARIABLE_FIELD_NAME, EVENT_VARIABLE_FIELD_ORIGIN,
-    EVENT_VARIABLE_FIELD_ORIGIN_TYPE, EVENT_VARIABLE_FIELD_SEND_ID, EVENT_VARIABLE_FIELD_TYPE, EVENT_VARIABLE_NAME,
+    Data, Datamodel, DatamodelFactory, GlobalDataArc, EVENT_VARIABLE_FIELD_DATA, EVENT_VARIABLE_FIELD_INVOKE_ID,
+    EVENT_VARIABLE_FIELD_NAME, EVENT_VARIABLE_FIELD_ORIGIN, EVENT_VARIABLE_FIELD_ORIGIN_TYPE,
+    EVENT_VARIABLE_FIELD_SEND_ID, EVENT_VARIABLE_FIELD_TYPE, EVENT_VARIABLE_NAME,
 };
 use crate::event_io_processor::SYS_IO_PROCESSORS;
 
@@ -41,7 +40,6 @@ use crate::event_io_processor::SYS_IO_PROCESSORS;
 use crate::executable_content::DefaultExecutableContentTracer;
 
 use crate::executable_content::{ExecutableContent, ExecutableContentTracer};
-use crate::expression_engine::expressions::ExpressionContext;
 use crate::fsm::{ExecutableContentId, Fsm, StateId};
 
 pub const ECMA_SCRIPT: &str = "ECMAScript";
@@ -113,7 +111,6 @@ impl FsmJSWrapper {
 }
 
 impl ECMAScriptDatamodel {
-
     pub fn new(global_data: GlobalDataArc) -> ECMAScriptDatamodel {
         ECMAScriptDatamodel {
             global_data,
@@ -149,11 +146,12 @@ impl ECMAScriptDatamodel {
                         let len = ar.length(ctx).unwrap() as usize;
                         #[cfg(feature = "Debug")]
                         debug!("js2d array #{} >>", len);
-                        let mut dv = Vec::with_capacity(len);
+                        let dv = Vec::with_capacity(len);
                         for i in 0..len {
                             let v = ar.get(i, ctx).unwrap();
                             if let Ok(av) = Self::js_to_data_value(&v, ctx) {
-                                dv.push(av)
+                                todo!()
+                                // dv.push(av)
                             }
                         }
                         #[cfg(feature = "Debug")]
@@ -187,9 +185,7 @@ impl ECMAScriptDatamodel {
                         Ok(Data::Map(dvm))
                     }
                 }
-                Err(err) => {
-                    Err(format!("Can't converted '{:?}' to Data: {}", value, err))
-                }
+                Err(err) => Err(format!("Can't converted '{:?}' to Data: {}", value, err)),
             },
         }
     }
@@ -219,9 +215,7 @@ impl ECMAScriptDatamodel {
                 } else {
                     debug!("Execute: {} => {:?}", script, res);
                     match Self::js_to_data_value(&res, &mut self.context) {
-                        Ok(s) => {
-                            Ok(s)
-                        }
+                        Ok(s) => Ok(s),
                         Err(err) => {
                             let msg = format!(
                                 "Script Error - failed to convert result to string: {} => {}",
@@ -269,12 +263,7 @@ impl ECMAScriptDatamodel {
             .set(js_string!(name), value, false, &mut self.context);
     }
 
-    fn assign_internal(
-        &mut self,
-        left_expr: &str,
-        right_expr: &str,
-        allow_undefined: bool,
-    ) -> bool {
+    fn assign_internal(&mut self, left_expr: &str, right_expr: &str, allow_undefined: bool) -> bool {
         let exp = format!("{}={}", left_expr, right_expr);
         if allow_undefined && self.strict_mode {
             self.context.strict(false);
@@ -305,7 +294,7 @@ impl ECMAScriptDatamodel {
         r
     }
 
-    pub fn data_value_to_js(data: &Data, context: &mut Context) -> JsValue {
+    pub fn data_value_to_js(&mut self, data: &Data) -> JsValue {
         match data {
             Data::None() => JsValue::Undefined,
             Data::Null() => JsValue::Null,
@@ -314,27 +303,24 @@ impl ECMAScriptDatamodel {
             Data::Boolean(v) => JsValue::Boolean(*v),
             Data::String(v) => JsValue::String(js_string!(v.clone())),
             Data::Array(v) => {
-                let js_array = JsArray::new(context);
+                let js_array = JsArray::new(&mut self.context);
                 for d in v {
-                    let djs = Self::data_value_to_js(d, context);
-                    let _ = js_array.push(djs, context);
+                    let data = self.global_data.lock().data.get_by_id(*d).unwrap().clone();
+                    let djs = self.data_value_to_js(&data);
+                    let _ = js_array.push(djs, &mut self.context);
                 }
                 JsValue::from(js_array)
             }
             Data::Map(v) => {
-                let js_map = JsMap::new(context);
+                let js_map = JsMap::new(&mut self.context);
                 for (key, d) in v {
-                    let djs = Self::data_value_to_js(d, context);
-                    let _ = js_map.set(js_string!(key.clone()), djs, context);
+                    let djs = self.data_value_to_js(d);
+                    let _ = js_map.set(js_string!(key.clone()), djs, &mut  self.context);
                 }
                 JsValue::from(js_map)
             }
-            Data::Error(_error) => {
-                JsValue::Null
-            }
-            Data::Source(source) => {
-                JsValue::String(js_string!(source.clone()))
-            }
+            Data::Error(_error) => JsValue::Null,
+            Data::Source(source) => JsValue::String(js_string!(source.clone())),
         }
     }
 
@@ -351,7 +337,7 @@ impl ECMAScriptDatamodel {
                     arg_list.reserve(len);
                     for i in 0..len {
                         let v = ar.get(i, ctx).unwrap();
-                        if let Ok(av) = Self::js_to_data_value(&v, ctx) {
+                        if let Ok(av) = Self::js_to_data_value(&v,ctx) {
                             arg_list.push(av)
                         }
                     }
@@ -380,7 +366,10 @@ impl ECMAScriptDatamodel {
             Err("Failed".to_string())
         };
         match r {
-            Ok(v) => Ok(Self::data_value_to_js(&v, ctx)),
+            Ok(v) => {
+                // Ok(self.data_value_to_js(&v)),
+                todo!();
+            }
             Err(v) => Err(JsError::from_opaque(JsValue::from(js_string!(v)))),
         }
     }
@@ -508,37 +497,37 @@ impl Datamodel for ECMAScriptDatamodel {
         }
     }
 
-    fn set_from_state_data(&mut self, data: &HashMap<String,Data>, set_data: bool) {
+    fn set_from_state_data(&mut self, data: &HashMap<String, Data>, set_data: bool) {
         for (name, data) in data {
             if set_data {
-                    if let Data::Source(src) = data {
-                        if !src.is_empty() {
-                            let rs = self.context.eval(Source::from_bytes(src.as_str()));
-                            println!("set_from_state_data {} -> {:?}", src, rs);
-                            match rs {
-                                Ok(val) => {
-                                    self.set_js_property(name.as_str(), val);
-                                }
-                                Err(err) => {
-                                    error!("Error on Initialize '{}': {}", name, err);
-                                    // W3C says:
-                                    // If the value specified for a <data> element (by 'src', children, or
-                                    // the environment) is not a legal data value, the SCXML Processor MUST
-                                    // raise place error.execution in the internal event queue and MUST
-                                    // create an empty data element in the data model with the specified id.
-                                    self.set_js_property(name.as_str(), JsValue::Undefined);
-                                    self.internal_error_execution();
-                                }
+                if let Data::Source(src) = data {
+                    if !src.is_empty() {
+                        let rs = self.context.eval(Source::from_bytes(src.as_str()));
+                        println!("set_from_state_data {} -> {:?}", src, rs);
+                        match rs {
+                            Ok(val) => {
+                                self.set_js_property(name.as_str(), val);
                             }
-                        } else {
-                            self.set_js_property(name.as_str(), JsValue::Null);
-                        };
+                            Err(err) => {
+                                error!("Error on Initialize '{}': {}", name, err);
+                                // W3C says:
+                                // If the value specified for a <data> element (by 'src', children, or
+                                // the environment) is not a legal data value, the SCXML Processor MUST
+                                // raise place error.execution in the internal event queue and MUST
+                                // create an empty data element in the data model with the specified id.
+                                self.set_js_property(name.as_str(), JsValue::Undefined);
+                                self.internal_error_execution();
+                            }
+                        }
                     } else {
-                        let ds = Self::data_value_to_js(data,&mut self.context );
-println!("set_from_state_data {} / {:?} -> {:?}", name, data, ds);
+                        self.set_js_property(name.as_str(), JsValue::Null);
+                    };
+                } else {
+                    let ds = self.data_value_to_js(data);
+                    println!("set_from_state_data {} / {:?} -> {:?}", name, data, ds);
 
-                        self.set_js_property(name.as_str(), ds );
-                    }
+                    self.set_js_property(name.as_str(), ds);
+                }
             } else {
                 self.set_js_property(name.as_str(), JsValue::Undefined);
             }
@@ -552,7 +541,7 @@ println!("set_from_state_data {} / {:?} -> {:?}", name, data, ds);
                 .configurable(true)
                 .enumerable(false)
                 .writable(false)
-                .value(Self::data_value_to_js(&value, &mut self.context)),
+                .value(self.data_value_to_js(&value)),
             &mut self.context,
         );
         if let Err(error) = r {
@@ -561,27 +550,30 @@ println!("set_from_state_data {} / {:?} -> {:?}", name, data, ds);
     }
 
     fn set(&mut self, name: &str, data: Data) {
-        let v = Self::data_value_to_js(&data, &mut self.context);
+        let v = self.data_value_to_js(&data);
         self.set_js_property(name, v);
-        self.global_data.lock().set_data(name.to_string(), data);
+        self.global_data
+            .lock()
+            .data
+            .set_undefined(name.to_string(), data);
     }
 
     fn set_event(&mut self, event: &crate::fsm::Event) {
         let data_value = match &event.param_values {
             None => match &event.content {
                 None => JsValue::Undefined,
-                Some(c) => Self::data_value_to_js( c, &mut self.context),
+                Some(c) => self.data_value_to_js(c),
             },
             Some(pv) => {
-                let ctx = &mut self.context;
                 let mut data = Vec::with_capacity(pv.len());
 
                 for pair in pv.iter() {
                     data.push((
                         js_string!(pair.name.clone()),
-                        Self::data_value_to_js(&pair.value, ctx),
+                        self.data_value_to_js(&pair.value),
                     ));
                 }
+                let ctx = &mut self.context;
                 let mut data_object_initializer = ObjectInitializer::new(ctx);
                 for (dn, dv) in data {
                     data_object_initializer.property(dn, dv, Attribute::all());
@@ -744,15 +736,9 @@ println!("set_from_state_data {} / {:?} -> {:?}", name, data, ds);
         //   as described in Section 9.2 of [ECMASCRIPT-262].
         let to_boolean_expression = format!("({})?true:false", script.as_script());
         match self.execute_internal(&Data::Source(to_boolean_expression.clone()), false) {
-            Ok(val) => {
-                match val {
-                    Data::Boolean(b) => {
-                        Ok(b)
-                    },
-                    _ => {
-                        Ok(false)
-                    }
-                }
+            Ok(val) => match val {
+                Data::Boolean(b) => Ok(b),
+                _ => Ok(false),
             },
             Err(msg) => Err(msg),
         }

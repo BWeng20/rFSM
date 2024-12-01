@@ -1,6 +1,6 @@
 //! Protocol to write a persistent binary version of a Fsm.
 
-use crate::datamodel::Data;
+use crate::datamodel::{Data,DataId};
 use std::io::Write;
 
 /// Trait for writing binary data in some platform independent way.\
@@ -20,6 +20,9 @@ pub trait ProtocolWriter<W: Write> {
 
     /// Writes a Data Value
     fn write_data_value(&mut self, value: &Data);
+
+    /// Writes a Data Id
+    fn write_data_id(&mut self, value: DataId);
 
     /// Writes a str
     fn write_str(&mut self, value: &str);

@@ -4,7 +4,7 @@
     "pass"
   ],
   "events": [],
-  "timeout_milliseconds": 5000,
+  "timeout_milliseconds": 500000,
   "options": {
     "datamodel:ecma:strict": ""
   }

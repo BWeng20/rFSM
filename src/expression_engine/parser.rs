@@ -1,11 +1,11 @@
 //! Implementation of a simple expression parser.
 
-use crate::datamodel::Data;
-use crate::expression_engine::expressions::{ExpressionConstant, Expression, ExpressionMethod, ExpressionVariable, Operator, ExpressionOperator, ExpressionMemberAccess, get_expression_as, ExpressionContext, ExpressionAssign, ExpressionArray};
+use crate::datamodel::{Data, GlobalDataLock};
+use crate::expression_engine::expressions::{get_expression_as, Expression, ExpressionArray, ExpressionAssign, ExpressionAssignUndefined, ExpressionConstant, ExpressionMemberAccess, ExpressionMethod, ExpressionOperator, ExpressionResult, Operator, ExpressionVariable};
+use crate::fsm::vec_to_string;
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
-use crate::fsm::{vec_to_string};
 
 /// Numeric types.
 #[derive(PartialEq, Debug)]
@@ -63,7 +63,6 @@ pub struct ExpressionLexer {
 }
 
 impl ExpressionLexer {
-
     pub fn new(text: String) -> Self {
         let mut chars = Vec::with_capacity(text.len());
         for c in text.chars() {
@@ -184,7 +183,7 @@ impl ExpressionLexer {
         }
     }
 
-    /// Read possible combinaed operators
+    /// Read possible combined operators
     fn read_operator(&mut self, first: char) -> Token {
         Token::Operator(match first {
             '-' => Operator::Minus,
@@ -196,6 +195,7 @@ impl ExpressionLexer {
                 let second = self.next_char();
                 if second == '=' {
                     match first {
+                        '?' => Operator::AssignUndefined,
                         '<' => Operator::LessEqual,
                         '>' => Operator::GreaterEqual,
                         '=' => Operator::Equal,
@@ -334,15 +334,9 @@ impl ExpressionLexer {
                     }
                 }
             }
-            3 | 6 => {
-                Token::Error("missing exponent in number".to_string())
-            }
-            5 => {
-                Token::Operator(Operator::Minus)
-            }
-            _ => {
-                Token::Error("internal error".to_string())
-            }
+            3 | 6 => Token::Error("missing exponent in number".to_string()),
+            5 => Token::Operator(Operator::Minus),
+            _ => Token::Error("internal error".to_string()),
         }
     }
 
@@ -424,7 +418,7 @@ impl ExpressionLexer {
         let t = self.next_token();
         match t {
             Token::Identifier(e) => Ok(e),
-            x => Err(format!("Unexpected token {}", x )),
+            x => Err(format!("Unexpected token {}", x)),
         }
     }
 
@@ -442,42 +436,35 @@ impl ExpressionLexer {
 }
 
 /// Static tool struct to process expressions.
-pub struct ExpressionParser {
-
-}
+pub struct ExpressionParser {}
 
 /// Internal item for the parser stack.
 enum ExpressionParserItem {
     SToken(Token),
-    SExpression(Box<dyn Expression>)
+    SExpression(Box<dyn Expression>),
 }
 
 impl Display for ExpressionParserItem {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            ExpressionParserItem::SToken(t) => {
-                Debug::fmt(t, f)
-            }
-            ExpressionParserItem::SExpression(e) => {
-                Debug::fmt(e, f)
-            }
+            ExpressionParserItem::SToken(t) => Debug::fmt(t, f),
+            ExpressionParserItem::SExpression(e) => Debug::fmt(e, f),
         }
     }
 }
 
 impl ExpressionParser {
-
     /// Parse a argument list, stops at the matching ")"
-    fn parse_argument_list( lexer : &mut ExpressionLexer, stop: char) -> Result<Vec<Box<dyn Expression>>, String> {
-        let mut r= Vec::new();
+    fn parse_argument_list(lexer: &mut ExpressionLexer, stop: char) -> Result<Vec<Box<dyn Expression>>, String> {
+        let mut r = Vec::new();
         loop {
-            let (stopc, expression) = Self::parse_sub_expression( lexer, &[',',stop])?;
+            let (stopc, expression) = Self::parse_sub_expression(lexer, &[',', stop])?;
             r.push(expression);
             if stopc == stop {
                 break;
             }
             if stopc == '\0' {
-                return Err(format!("Missing '{}'", stop))
+                return Err(format!("Missing '{}'", stop));
             }
         }
         Ok(r)
@@ -492,30 +479,23 @@ impl ExpressionParser {
 
     /// Parses and executes an expression.\
     /// If possible, please use "parse" and re-use the parsed expressions.
-    pub fn execute(source: String, context: &mut dyn ExpressionContext) -> Result<Data,String> {
+    pub fn execute(source: String, context: &mut GlobalDataLock) -> ExpressionResult {
         println!("eval {}", source);
         let r = Self::parse(source);
         match r {
-            Ok(v) => {
-                let d = v.execute(context).get_value(context);
-                if let Err(err) = d {
-                    // Simplify error handling.
-                    Err(err.clone())
-                } else {
-                    Ok(d.unwrap())
-                }
-            }
-            Err(err) => {
-                Err(err)
-            }
+            Ok(v) => v.execute(context, true),
+            Err(err) => ExpressionResult::Error(err),
         }
     }
 
-    fn parse_sub_expression(lexer: &mut ExpressionLexer, stops : &[char] ) -> Result<(char,Box<dyn Expression>),String> {
+    fn parse_sub_expression(
+        lexer: &mut ExpressionLexer,
+        stops: &[char],
+    ) -> Result<(char, Box<dyn Expression>), String> {
         // Translate the lexer tokens and put them to the stack. Resolve method calls and sub-expressions.
         // The result will be a stack sequence of identifier / operators / expressions.
         // All remaining "Identifier" are variables.
-        let mut stack : Vec<ExpressionParserItem> = Vec::new();
+        let mut stack: Vec<ExpressionParserItem> = Vec::new();
         let mut stop = '\0';
         loop {
             let t = lexer.next_token();
@@ -524,91 +504,91 @@ impl ExpressionParser {
                     break;
                 }
                 Token::Null() => {
-                    stack.push( ExpressionParserItem::SExpression( Box::new( ExpressionConstant::new(Data::Null()))));
+                    stack.push(ExpressionParserItem::SExpression(Box::new(
+                        ExpressionConstant::new(Data::Null()),
+                    )));
                 }
                 Token::TString(text) => {
-                    stack.push( ExpressionParserItem::SExpression( Box::new( ExpressionConstant::new(Data::String(text.clone())))));
+                    stack.push(ExpressionParserItem::SExpression(Box::new(
+                        ExpressionConstant::new(Data::String(text.clone())),
+                    )));
                 }
                 Token::Boolean(v) => {
-                    stack.push( ExpressionParserItem::SExpression( Box::new( ExpressionConstant::new(Data::Boolean(*v)))));
+                    stack.push(ExpressionParserItem::SExpression(Box::new(
+                        ExpressionConstant::new(Data::Boolean(*v)),
+                    )));
                 }
                 Token::Number(v) => {
-                    stack.push( ExpressionParserItem::SExpression( Box::new( ExpressionConstant::new(
-                    match v {
-                        NumericToken::Integer(i) => Data::Integer(*i),
-                        NumericToken::Double(i) => Data::Double(*i)
-                    }))));
+                    stack.push(ExpressionParserItem::SExpression(Box::new(
+                        ExpressionConstant::new(match v {
+                            NumericToken::Integer(i) => Data::Integer(*i),
+                            NumericToken::Double(i) => Data::Double(*i),
+                        }),
+                    )));
                 }
                 Token::Identifier(_) => {
-                    stack.push( ExpressionParserItem::SToken(t));
+                    stack.push(ExpressionParserItem::SToken(t));
                 }
                 Token::Operator(_) => {
-                    stack.push( ExpressionParserItem::SToken(t));
+                    stack.push(ExpressionParserItem::SToken(t));
                 }
-                Token::Bracket(br) => {
-                    match br {
-                        '(' => {
-                            let si = stack.pop();
-                            match si {
-                                None => {
-                                    let (_,se) = Self::parse_sub_expression(lexer, &[')'])?;
-                                    stack.push( ExpressionParserItem::SExpression(se) );
-                                }
-                                Some(si) => {
-                                    match si {
-                                        ExpressionParserItem::SToken(token) => {
-                                            match token {
-                                                Token::Null()|
-                                                Token::Separator(_)|
-                                                Token::Bracket(_) |
-                                                Token::Boolean(_) |
-                                                Token::TString(_) |
-                                                Token::Number(_) => {
-                                                    return Result::Err(format!("Unexpected '{}'", br));
-                                                }
-                                                Token::Identifier(id) => {
-                                                    let v = Self::parse_argument_list( lexer, ')' );
-                                                    let x = Box::new(ExpressionMethod::new(id.as_str(), v.unwrap()));
-                                                    stack.push(ExpressionParserItem::SExpression(x));
-                                                }
-                                                Token::Operator(_) => {
-                                                    stack.push(ExpressionParserItem::SToken(token));
-                                                    let (_,se) = Self::parse_sub_expression(lexer, &[')'] )?;
-                                                    stack.push( ExpressionParserItem::SExpression(se) );
-                                                }
-                                                Token::Error(_) => {}
-                                                Token::EOE => {}
-                                            }
-
-                                        }
-                                        ExpressionParserItem::SExpression(_) => {
-                                            return Result::Err(format!("Unexpected '{}'", br));
-                                        }
+                Token::Bracket(br) => match br {
+                    '(' => {
+                        let si = stack.pop();
+                        match si {
+                            None => {
+                                let (_, se) = Self::parse_sub_expression(lexer, &[')'])?;
+                                stack.push(ExpressionParserItem::SExpression(se));
+                            }
+                            Some(si) => match si {
+                                ExpressionParserItem::SToken(token) => match token {
+                                    Token::Null()
+                                    | Token::Separator(_)
+                                    | Token::Bracket(_)
+                                    | Token::Boolean(_)
+                                    | Token::TString(_)
+                                    | Token::Number(_) => {
+                                        return Result::Err(format!("Unexpected '{}'", br));
                                     }
+                                    Token::Identifier(id) => {
+                                        let v = Self::parse_argument_list(lexer, ')');
+                                        let x = Box::new(ExpressionMethod::new(id.as_str(), v.unwrap()));
+                                        stack.push(ExpressionParserItem::SExpression(x));
+                                    }
+                                    Token::Operator(_) => {
+                                        stack.push(ExpressionParserItem::SToken(token));
+                                        let (_, se) = Self::parse_sub_expression(lexer, &[')'])?;
+                                        stack.push(ExpressionParserItem::SExpression(se));
+                                    }
+                                    Token::Error(_) => {}
+                                    Token::EOE => {}
+                                },
+                                ExpressionParserItem::SExpression(_) => {
+                                    return Result::Err(format!("Unexpected '{}'", br));
                                 }
-                            }
-                        }
-                        '[' => {
-                            let v = Self::parse_argument_list( lexer, ']' );
-                            let x = Box::new(ExpressionArray::new(v.unwrap()));
-                            stack.push(ExpressionParserItem::SExpression(x));
-                        }
-                        _ => {
-                            if stops.contains(br) {
-                                stop = *br;
-                                break;
-                            } else {
-                                return Result::Err(format!("Unexpected '{}'", br));
-                            }
+                            },
                         }
                     }
-                }
+                    '[' => {
+                        let v = Self::parse_argument_list(lexer, ']');
+                        let x = Box::new(ExpressionArray::new(v.unwrap()));
+                        stack.push(ExpressionParserItem::SExpression(x));
+                    }
+                    _ => {
+                        if stops.contains(br) {
+                            stop = *br;
+                            break;
+                        } else {
+                            return Result::Err(format!("Unexpected '{}'", br));
+                        }
+                    }
+                },
                 Token::Separator(sep) => {
                     if stops.contains(sep) {
                         stop = *sep;
                         break;
                     } else if *sep == '.' {
-                        stack.push( ExpressionParserItem::SToken(Token::Separator('.')));
+                        stack.push(ExpressionParserItem::SToken(Token::Separator('.')));
                     }
                 }
                 Token::Error(err) => {
@@ -616,7 +596,7 @@ impl ExpressionParser {
                 }
             }
         }
-        let expression  = Self::stack_to_expression(&mut stack)?;
+        let expression = Self::stack_to_expression(&mut stack)?;
         Ok((stop, expression))
     }
 
@@ -624,10 +604,11 @@ impl ExpressionParser {
     /// neighbours and replace the item at the index with the result.\
     /// If the operation fails, all items (at index and neighbours) are removed.\
     /// Neighbours must be ExpressionParserItem::SExpression.
-    fn fold_stack_at<F>(stack: &mut Vec<ExpressionParserItem>,  idx : usize, f : F ) -> bool where
-        F : Fn(Box<dyn Expression>, Box<dyn Expression> ) -> Result<Box<dyn Expression>, String>
+    fn fold_stack_at<F>(stack: &mut Vec<ExpressionParserItem>, idx: usize, f: F) -> bool
+    where
+        F: Fn(Box<dyn Expression>, Box<dyn Expression>) -> Result<Box<dyn Expression>, String>,
     {
-        if idx > 0 && (idx+1) < stack.len() {
+        if idx > 0 && (idx + 1) < stack.len() {
             let right = stack.remove(idx + 1);
             stack.remove(idx);
             let left = stack.remove(idx - 1);
@@ -639,9 +620,7 @@ impl ExpressionParser {
                             stack.insert(idx - 1, ExpressionParserItem::SExpression(expression));
                             return true;
                         }
-                        Err(_err) => {
-                            return false
-                        }
+                        Err(_err) => return false,
                     }
                 }
             }
@@ -649,63 +628,59 @@ impl ExpressionParser {
         false
     }
 
-    fn stack_to_expression(stack: &mut Vec<ExpressionParserItem>) -> Result<Box<dyn Expression>,String>  {
-
+    fn stack_to_expression(stack: &mut Vec<ExpressionParserItem>) -> Result<Box<dyn Expression>, String> {
         println!("stack: {:?}", vec_to_string(stack));
         // Handle operators and identifier
         if stack.is_empty() {
-            return Result::Err("Internal Error".to_string())
+            return Result::Err("Internal Error".to_string());
         }
         let mut best_idx = 0usize;
         let mut best_idx_prio = 0xffu8;
         #[allow(clippy::needless_range_loop)]
         for si in 0..stack.len() {
             match &stack[si] {
-                ExpressionParserItem::SToken(token) => {
-                    match token {
-                        Token::Identifier(identifier) => {
-                            let ex = Box::new(ExpressionVariable::new(identifier));
-                            stack[si] = ExpressionParserItem::SExpression(ex);
-                        }
-                        Token::Separator(s) => {
-                            match *s {
-                                '.' => {
-                                    if  2 < best_idx_prio {
-                                        best_idx = si;
-                                        best_idx_prio = 2;
-                                    }
-                                }
-                                _ => {
-                                    panic!("Internal error")
-                                }
-                            }
-                        }
-                        Token::Operator(operator) => {
-                            let prio = match operator {
-                                Operator::Not => 3u8,
-                                Operator::Multiply => 5,
-                                Operator::Divide => 5,
-                                Operator::Modulo => 5,
-                                Operator::Plus => 6,
-                                Operator::Minus => 6,
-                                Operator::Less => 9,
-                                Operator::LessEqual => 9,
-                                Operator::Greater => 9,
-                                Operator::GreaterEqual => 9,
-                                Operator::Equal => 10,
-                                Operator::NotEqual => 10,
-                                Operator::Assign => 16,
-                            };
-                            if  prio < best_idx_prio {
+                ExpressionParserItem::SToken(token) => match token {
+                    Token::Identifier(identifier) => {
+                        let ex = Box::new(ExpressionVariable::new(identifier));
+                        stack[si] = ExpressionParserItem::SExpression(ex);
+                    }
+                    Token::Separator(s) => match *s {
+                        '.' => {
+                            if 2 < best_idx_prio {
                                 best_idx = si;
-                                best_idx_prio = prio;
+                                best_idx_prio = 2;
                             }
                         }
                         _ => {
                             panic!("Internal error")
                         }
+                    },
+                    Token::Operator(operator) => {
+                        let prio = match operator {
+                            Operator::Not => 3u8,
+                            Operator::Multiply => 5,
+                            Operator::Divide => 5,
+                            Operator::Modulo => 5,
+                            Operator::Plus => 6,
+                            Operator::Minus => 6,
+                            Operator::Less => 9,
+                            Operator::LessEqual => 9,
+                            Operator::Greater => 9,
+                            Operator::GreaterEqual => 9,
+                            Operator::Equal => 10,
+                            Operator::NotEqual => 10,
+                            Operator::Assign => 16,
+                            Operator::AssignUndefined => 16,
+                        };
+                        if prio < best_idx_prio {
+                            best_idx = si;
+                            best_idx_prio = prio;
+                        }
                     }
-                }
+                    _ => {
+                        panic!("Internal error")
+                    }
+                },
                 ExpressionParserItem::SExpression(_) => {}
             }
         }
@@ -716,30 +691,47 @@ impl ExpressionParser {
                 op = Some(op_t.clone());
             }
             if let Some(op) = op {
-                match  op.clone() {
-                    Operator::Divide |
-                    Operator::Plus |
-                    Operator::Minus |
-                    Operator::Less |
-                    Operator::LessEqual |
-                    Operator::Greater |
-                    Operator::GreaterEqual |
-                    Operator::Equal |
-                    Operator::NotEqual |
-                    Operator::Modulo |
-                    Operator::Multiply => {
-                        if Self::fold_stack_at(stack, best_idx, |le : Box<dyn Expression>,re :Box<dyn Expression>|
-                                            -> Result<Box<dyn Expression>, String> {
-                            Ok(Box::new(ExpressionOperator::new(op.clone(), le, re)))
-                        }) {
+                match op.clone() {
+                    Operator::Divide
+                    | Operator::Plus
+                    | Operator::Minus
+                    | Operator::Less
+                    | Operator::LessEqual
+                    | Operator::Greater
+                    | Operator::GreaterEqual
+                    | Operator::Equal
+                    | Operator::NotEqual
+                    | Operator::Modulo
+                    | Operator::Multiply => {
+                        if Self::fold_stack_at(
+                            stack,
+                            best_idx,
+                            |le: Box<dyn Expression>, re: Box<dyn Expression>| -> Result<Box<dyn Expression>, String> {
+                                Ok(Box::new(ExpressionOperator::new(op.clone(), le, re)))
+                            },
+                        ) {
+                            return Self::stack_to_expression(stack);
+                        }
+                    }
+                    Operator::AssignUndefined => {
+                        if Self::fold_stack_at(
+                            stack,
+                            best_idx,
+                            |le: Box<dyn Expression>, re: Box<dyn Expression>| -> Result<Box<dyn Expression>, String> {
+                                Ok(Box::new(ExpressionAssignUndefined::new(le, re)))
+                            },
+                        ) {
                             return Self::stack_to_expression(stack);
                         }
                     }
                     Operator::Assign => {
-                        if Self::fold_stack_at(stack, best_idx, |le : Box<dyn Expression>,re :Box<dyn Expression>|
-                                                                 -> Result<Box<dyn Expression>, String> {
-                            Ok(Box::new(ExpressionAssign::new(le, re)))
-                        }) {
+                        if Self::fold_stack_at(
+                            stack,
+                            best_idx,
+                            |le: Box<dyn Expression>, re: Box<dyn Expression>| -> Result<Box<dyn Expression>, String> {
+                                Ok(Box::new(ExpressionAssign::new(le, re)))
+                            },
+                        ) {
                             return Self::stack_to_expression(stack);
                         }
                     }
@@ -748,39 +740,40 @@ impl ExpressionParser {
                     }
                 }
             } else if let ExpressionParserItem::SToken(Token::Separator(_)) = si {
-                if best_idx > 0 && (best_idx+1) < stack.len() && Self::fold_stack_at(stack, best_idx, |le : Box<dyn Expression>,re :Box<dyn Expression>|
-                                                          -> Result<Box<dyn Expression>, String> {
-                        match get_expression_as::<ExpressionVariable>(re.deref())
-                        {
-                            Some(e) => {
-                                Ok(Box::new(ExpressionMemberAccess::new(le, e.name.clone())))
+                if best_idx > 0
+                    && (best_idx + 1) < stack.len()
+                    && Self::fold_stack_at(
+                        stack,
+                        best_idx,
+                        |le: Box<dyn Expression>, re: Box<dyn Expression>| -> Result<Box<dyn Expression>, String> {
+                            match get_expression_as::<ExpressionVariable>(re.deref()) {
+                                Some(e) => Ok(Box::new(ExpressionMemberAccess::new(le, e.name.clone()))),
+                                None => Err("No Identifier on right side of '.'".to_string()),
                             }
-                            None => {
-                                Err("No Identifier on right side of '.'".to_string())
-                            }
-                        }
-                    }) {
+                        },
+                    )
+                {
                     return Self::stack_to_expression(stack);
                 }
             }
-        } else  {
+        } else {
             let x = stack.remove(0);
             if let ExpressionParserItem::SExpression(ex) = x {
                 // No operator? Return first one.
-                return Ok(ex)
+                return Ok(ex);
             }
         }
-        Err( "Failed to parse".to_string() )
-
+        Err("Failed to parse".to_string())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-    use crate::datamodel::Data;
-    use crate::expression_engine::expressions::{ExpressionContext, ExpressionResult};
+    use crate::datamodel::{Data, GlobalDataArc};
+    use crate::expression_engine::datamodel::RFsmExpressionDatamodel;
     use crate::expression_engine::parser::{ExpressionLexer, ExpressionParser, NumericToken, Operator, Token};
+    use std::collections::HashMap;
+    use crate::expression_engine::expressions::ExpressionResult;
 
     #[test]
     fn can_parse_numbers() {
@@ -1009,43 +1002,43 @@ mod tests {
 
     #[test]
     fn parser_can_parse_a_simple_expression_without_identifiers() {
-        let mut data = ExpressionContext::new();
+        let mut data = RFsmExpressionDatamodel::new(GlobalDataArc::new());
 
         let r = ExpressionParser::parse("12 * 3.4".to_string()).unwrap();
         print!("Parsed: {:?}", r);
-        let result_data = r.execute(&mut data);
+        let result_data = r.execute(&mut data.global_data.lock(), true);
         println!(" => {:?}", result_data);
-        assert!( result_data.eq( &ExpressionResult::Data(Data::Double(12f64 * 3.4f64))) );
+        assert!(result_data.eq(&ExpressionResult::Value(Data::Double(12f64 * 3.4f64))));
 
         let r = ExpressionParser::parse("(12 * 2)".to_string()).unwrap();
         print!("Parsed: {:?}", r);
-        let result_data = r.execute(&mut data);
+        let result_data = r.execute(&mut data.global_data.lock(), true);
         println!(" => {:?}", result_data);
-        assert!( result_data.eq( &ExpressionResult::Data(Data::Integer(24))) );
+        assert!(result_data.eq(&ExpressionResult::Value(Data::Integer(24))));
 
         let r = ExpressionParser::parse("(1 * 2) + (12 * 2)".to_string()).unwrap();
         print!("Parsed: {:?}", r);
-        let result_data = r.execute(&mut data);
+        let result_data = r.execute(&mut data.global_data.lock(), true);
         println!(" => {:?}", result_data);
-        assert!( result_data.eq( &ExpressionResult::Data(Data::Integer(26))) );
+        assert!(result_data.eq(&ExpressionResult::Value(Data::Integer(26))));
     }
 
     #[test]
     fn expressions_prioritize_multiplication_division_operations() {
-        let mut data = ExpressionContext::new();
+        let mut data = RFsmExpressionDatamodel::new(GlobalDataArc::new());
 
         let r = ExpressionParser::parse("12 + 2 * 4".to_string()).unwrap();
         print!("Parsed: {:?}", r);
-        let result_data = r.execute(&mut data);
+        let result_data = r.execute(&mut data.global_data.lock(), true);
         println!(" => {:?}", result_data);
-        assert!( result_data.eq( &ExpressionResult::Data(Data::Integer( 12 + (2 * 4)))) );
+        assert!(result_data.eq(&ExpressionResult::Value(Data::Integer(12 + (2 * 4)))));
 
         // Check that forced "()" work
         let r = ExpressionParser::parse("(12 + 2) * 4".to_string()).unwrap();
         print!("Parsed: {:?}", r);
-        let result_data = r.execute(&mut data);
+        let result_data = r.execute(&mut data.global_data.lock(), true);
         println!(" => {:?}", result_data);
-        assert!( result_data.eq( &ExpressionResult::Data(Data::Integer( (12 + 2) * 4))) );
+        assert!(result_data.eq(&ExpressionResult::Value(Data::Integer((12 + 2) * 4))));
     }
 
     #[test]
@@ -1064,20 +1057,24 @@ mod tests {
         let r2 = ExpressionParser::parse("A.b.c".to_string()).unwrap();
         println!("Parsed: {:?}", r2);
 
-        let mut data = ExpressionContext::new();
+        let mut data = RFsmExpressionDatamodel::new(GlobalDataArc::new());
         let mut hs1 = HashMap::new();
         let mut hs2 = HashMap::new();
         hs2.insert("c".to_string(), Data::String("hello".to_string()));
         hs1.insert("b".to_string(), Data::Map(hs2));
 
-        data.values.insert( "A".to_string(), Data::Map(hs1));
-        let rs1 = r1.execute(&mut data);
-        println!( "==> {:?}", rs1);
-        assert!( if let Data::Map(_x) = rs1.get_value(&data).unwrap() { true } else {false } );
+        data.global_data.lock().data.set_undefined("A".to_string(), Data::Map(hs1));
+        let rs1 = r1.execute(&mut data.global_data.lock(), true);
+        println!("==> {:?}", rs1);
+        assert!(if let ExpressionResult::Value(Data::Map(_x)) = rs1 {
+            true
+        } else {
+            false
+        });
 
-        let rs2 = r2.execute(&mut data);
-        println!( "==> {:?}", rs2);
-        assert_eq!( rs2.get_value(&data), Ok(Data::String("hello".to_string())))
+        let rs2 = r2.execute(&mut data.global_data.lock(), true);
+        println!("==> {:?}", rs2);
+        assert_eq!(rs2, ExpressionResult::Value(Data::String("hello".to_string())))
     }
 
     #[test]
@@ -1085,13 +1082,15 @@ mod tests {
         let r1 = ExpressionParser::parse("A=2*6".to_string()).unwrap();
         println!("Parsed: {:?}", r1);
 
-        let mut data = ExpressionContext::new();
+        let mut data = RFsmExpressionDatamodel::new(GlobalDataArc::new());
         // data.values.insert( "A".to_string(), Data::Integer(1));
 
-        let rs1 = r1.execute(&mut data);
-        println!( "==> {:?}", rs1);
-        assert_eq!( rs1.get_value(&data), Ok(Data::Integer(12)) );
-        assert_eq!( data.values.get("A"), Some(&Data::Integer(12)) );
+        let rs1 = r1.execute(&mut data.global_data.lock(), true);
+        println!("==> {:?}", rs1);
+        assert_eq!(rs1, ExpressionResult::Value(Data::Integer(12)));
+        assert_eq!(
+            data.global_data.lock().data.get(&"A".to_string()),
+            Some(&Data::Integer(12))
+        );
     }
-
 }

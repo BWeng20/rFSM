@@ -1,10 +1,10 @@
 use log::{debug, error};
 use rfsm::actions::{Action, ActionWrapper};
 use rfsm::datamodel::Data;
+use rfsm::fsm::GlobalData;
 use rfsm::fsm_executor::FsmExecutor;
 use rfsm::init_logging;
 use std::process::exit;
-use rfsm::fsm::GlobalData;
 
 #[cfg(feature = "Trace")]
 use rfsm::tracer::TraceMode;

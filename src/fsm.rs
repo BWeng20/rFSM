@@ -48,8 +48,7 @@ use crate::event_io_processor::EventIOProcessor;
 use crate::executable_content::ExecutableContent;
 
 #[cfg(feature = "RfsmExpressionModel")]
-use crate::expression_engine::datamodel::{RFSM_EXPRESSION_DATAMODEL_LC, RFsmExpressionDatamodelFactory};
-use crate::expression_engine::expressions::ExpressionContext;
+use crate::expression_engine::datamodel::{RFsmExpressionDatamodelFactory, RFSM_EXPRESSION_DATAMODEL_LC};
 
 use crate::fsm::BindingType::{Early, Late};
 use crate::fsm_executor::FsmExecutor;
@@ -161,7 +160,7 @@ pub fn start_fsm_with_data_and_finish_mode(
                         let root_state = sm.get_state_by_id_mut(sm.pseudo_root);
                         for val in data_copy {
                             if root_state.data.get_mut(&val.name).is_some() {
-                                root_state.data.insert(val.name, val.value );
+                                root_state.data.insert(val.name, val.value);
                             }
                         }
                     }
@@ -1026,14 +1025,13 @@ pub struct GlobalData {
 
     /// Will contain after execution the final configuration, if set before.
     pub final_configuration: Option<Vec<String>>,
-    pub environment: HashMap<String,Data>,
+    pub environment: HashMap<String, Data>,
 
     /// Stores any delayed send (with a "sendid"), Key: sendid
     pub delayed_send: HashMap<String, Guard>,
     pub io_processors: HashMap<String, Arc<Mutex<Box<dyn EventIOProcessor>>>>,
 
     pub data: DataStore,
-    null_data: Data
 }
 
 impl GlobalData {
@@ -1056,7 +1054,6 @@ impl GlobalData {
             delayed_send: HashMap::new(),
             io_processors: HashMap::new(),
             data: DataStore::new(),
-            null_data: Data::Null()
         }
     }
 
@@ -1064,30 +1061,6 @@ impl GlobalData {
         self.internalQueue.enqueue(event);
     }
 }
-
-impl ExpressionContext for GlobalData {
-    fn get_null(&self) -> &Data {
-        &self.null_data
-    }
-
-    fn get_data(&self, key: &String) -> Option<&Data> {
-        self.data.get(key)
-    }
-
-    fn set_data(&mut self, key: String, data: Data) {
-        self.data.set(key, data )
-    }
-
-    fn execute_action(&mut self, name: &String, arguments: &[Data]) -> Result<Data, String> {
-        match self.actions.lock().get(name) {
-            None => { Err(format!("Action '{}' not found", name))}
-            Some(action) => {
-                action.execute( arguments, self )
-            }
-        }
-    }
-}
-
 
 /// Mode how the executor handles the ScxmlSession
 /// if the FSM is finished.
@@ -1393,7 +1366,10 @@ impl Fsm {
             let session_id = datamodel.global_s().lock().session_id;
             datamodel.initialize_read_only(SESSION_ID_VARIABLE_NAME, Data::Integer(session_id as i64));
             // TODO :Escape name
-            datamodel.initialize_read_only(SESSION_NAME_VARIABLE_NAME, Data::String(format!("{}",self.name)));
+            datamodel.initialize_read_only(
+                SESSION_NAME_VARIABLE_NAME,
+                Data::String(format!("{}", self.name)),
+            );
 
             {
                 let mut gd = get_global!(datamodel);
@@ -3036,7 +3012,7 @@ impl Fsm {
         // W3C: if the evaluation of its arguments produces an error, the SCXML Processor must
         // terminate the processing of the element without further action.
 
-        let mut type_name_data = match datamodel.get_expression_alternative_value(&inv.type_name, &inv.type_expr) {
+        let type_name_data = match datamodel.get_expression_alternative_value(&inv.type_name, &inv.type_expr) {
             Ok(value) => value,
             Err(_) => {
                 // Error -> abort
@@ -3583,7 +3559,7 @@ lazy_static! {
         #[cfg(feature = "RfsmExpressionModel")]
         hs.insert(
             RFSM_EXPRESSION_DATAMODEL_LC.to_string(),
-            Box::new( RFsmExpressionDatamodelFactory {}),
+            Box::new(RFsmExpressionDatamodelFactory {}),
         );
 
         Arc::new(Mutex::new(hs))
@@ -3736,22 +3712,23 @@ impl Action for DebugAction {
 
 #[cfg(test)]
 mod tests {
-
-    use crate::fsm::List;
     use crate::fsm::OrderedSet;
+    use crate::fsm::{EventType, List};
     #[cfg(feature = "Trace")]
     use crate::tracer::TraceMode;
+    use std::collections::HashMap;
 
     #[cfg(feature = "ECMAScript")]
-    #[cfg( feature = "xml")]
+    #[cfg(feature = "xml")]
     use crate::scxml_reader;
 
     #[cfg(feature = "ECMAScript")]
-    #[cfg( feature = "xml")]
+    #[cfg(feature = "xml")]
     use std::sync::mpsc::Sender;
 
+    use crate::test::run_test_manual_with_send;
     #[cfg(feature = "ECMAScript")]
-    #[cfg( feature = "xml")]
+    #[cfg(feature = "xml")]
     use crate::Event;
 
     #[cfg(feature = "ECMAScript")]

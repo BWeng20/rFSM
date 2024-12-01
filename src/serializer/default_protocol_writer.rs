@@ -8,7 +8,7 @@ use byteorder::WriteBytesExt;
 #[cfg(feature = "Debug_Serializer")]
 use log::debug;
 
-use crate::datamodel::Data;
+use crate::datamodel::{Data, DataId};
 use log::error;
 use std::io::Write;
 
@@ -81,6 +81,10 @@ impl<W: Write> ProtocolWriter<W> for DefaultProtocolWriter<W> {
         }
     }
 
+    fn write_data_id(&mut self, value: DataId) {
+        self.write_uint(value as u64);
+    }
+
     fn write_data_value(&mut self, value: &Data) {
         match value {
             Data::Integer(val) => {
@@ -103,7 +107,7 @@ impl<W: Write> ProtocolWriter<W> for DefaultProtocolWriter<W> {
                 self.write_u8(5);
                 self.write_usize(val.len());
                 for v in val {
-                    self.write_data_value(v);
+                    self.write_data_id(*v);
                 }
             }
             Data::Map(val) => {
@@ -122,7 +126,7 @@ impl<W: Write> ProtocolWriter<W> for DefaultProtocolWriter<W> {
                 self.write_u8(8);
                 self.write_str(s.as_str());
             }
-            Data::None()=> {
+            Data::None() => {
                 self.write_u8(9);
             }
             Data::Null() => {
