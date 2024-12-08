@@ -13,8 +13,8 @@ use crate::event_io_processor::EventIOProcessor;
 use crate::expression_engine::expressions::Operator;
 use crate::expression_engine::parser::{ExpressionLexer, Token};
 use crate::fsm::{
-    CommonContent, Event, ExecutableContentId, Fsm, GlobalData, InvokeId, Parameter, ParamPair, State, StateId,
-    vec_to_string,
+    vec_to_string, CommonContent, Event, ExecutableContentId, Fsm, GlobalData, InvokeId, ParamPair, Parameter, State,
+    StateId,
 };
 
 pub const DATAMODEL_OPTION_PREFIX: &str = "datamodel:";
@@ -141,14 +141,14 @@ pub trait Datamodel {
 
     /// Initialize a global read-only variable.
     fn initialize_read_only(&mut self, name: &str, value: Data) {
-       self.initialize_read_only_arc( name, create_data_arc(value));
+        self.initialize_read_only_arc(name, create_data_arc(value));
     }
 
     fn initialize_read_only_arc(&mut self, name: &str, value: DataArc);
 
     /// Sets a global variable.
     fn set(&mut self, name: &str, data: Data) {
-        self.set_arc( name, create_data_arc(data));
+        self.set_arc(name, create_data_arc(data));
     }
 
     fn set_arc(&mut self, name: &str, data: DataArc);
@@ -277,7 +277,10 @@ pub trait Datamodel {
             None => None,
             Some(ct) => {
                 match &ct.content_expr {
-                    None => ct.content.as_ref().map(|ct_content| create_data_arc(Data::Source(ct_content.clone()))),
+                    None => ct
+                        .content
+                        .as_ref()
+                        .map(|ct_content| create_data_arc(Data::Source(ct_content.clone()))),
                     Some(expr) => {
                         match self.execute(&Data::Source(expr.clone())) {
                             Err(msg) => {
@@ -546,8 +549,9 @@ impl PartialEq for Data {
                     return false;
                 }
                 for index in 0..a.len() {
-                    if !(Arc::ptr_eq( &a[index].arc, &b[index].arc) ||
-                        *a[index].lock().unwrap() == *b[index].lock().unwrap()) {
+                    if !(Arc::ptr_eq(&a[index].arc, &b[index].arc)
+                        || *a[index].lock().unwrap() == *b[index].lock().unwrap())
+                    {
                         return false;
                     }
                 }
@@ -927,42 +931,39 @@ impl Default for Data {
     }
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct DataArc {
-    pub arc : Arc<Mutex<Data>>
+    pub arc: Arc<Mutex<Data>>,
 }
 
 impl DataArc {
-    pub fn lock(&self) -> LockResult<MutexGuard<'_,Data>> {
+    pub fn lock(&self) -> LockResult<MutexGuard<'_, Data>> {
         self.arc.lock()
     }
 }
 
 impl PartialEq for DataArc {
-
     fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.arc, &other.arc) || self.arc.lock().unwrap().eq( other.lock().unwrap().deref())
+        Arc::ptr_eq(&self.arc, &other.arc) || self.arc.lock().unwrap().eq(other.lock().unwrap().deref())
     }
-
 }
-
 
 impl Display for DataArc {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self.arc.lock() {
+        match self.arc.try_lock() {
             Ok(val) => {
-                write!(f, "{}", *val )
+                write!(f, "{}", val.deref())
             }
             Err(_) => {
-                write!(f, "none" )
+                write!(f, "<locked arc>")
             }
         }
     }
 }
 
-pub fn create_data_arc( data : Data ) -> DataArc {
-    DataArc{
-        arc : Arc::new(Mutex::from(data))
+pub fn create_data_arc(data: Data) -> DataArc {
+    DataArc {
+        arc: Arc::new(Mutex::from(data)),
     }
 }
 
@@ -992,9 +993,9 @@ impl DataStore {
         // W3C want to assign only to defined variables.
         if let std::collections::hash_map::Entry::Occupied(mut e) = self.map.entry(key) {
             e.insert(create_data_arc(data));
-             true
-         } else {
-             false
+            true
+        } else {
+            false
         }
     }
 

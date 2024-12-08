@@ -316,8 +316,7 @@ where
     }
 
     pub fn write_executable_content_if(&mut self, executable_content_if: &If) {
-        self.writer
-            .write_data(&executable_content_if.condition);
+        self.writer.write_data(&executable_content_if.condition);
         self.write_executable_content_id(executable_content_if.content);
         self.write_executable_content_id(executable_content_if.else_content);
     }
@@ -336,8 +335,7 @@ where
 
     pub fn write_executable_content_log(&mut self, executable_content_log: &Log) {
         self.writer.write_str(&executable_content_log.label);
-        self.writer
-            .write_data(&executable_content_log.expression);
+        self.writer.write_data(&executable_content_log.expression);
     }
 
     pub fn write_executable_content_for_each(&mut self, executable_content_for_each: &ForEach) {
@@ -348,10 +346,8 @@ where
     }
     pub fn write_executable_content_send(&mut self, executable_content_send: &SendParameters) {
         self.writer.write_str(&executable_content_send.name);
-        self.writer
-            .write_data(&executable_content_send.target);
-        self.writer
-            .write_data(&executable_content_send.target_expr);
+        self.writer.write_data(&executable_content_send.target);
+        self.writer.write_data(&executable_content_send.target_expr);
 
         if let Some(ct) = &executable_content_send.content {
             self.writer.write_boolean(true);
@@ -366,17 +362,13 @@ where
         self.write_parameters(&executable_content_send.params);
 
         self.writer.write_data(&executable_content_send.event);
-        self.writer
-            .write_data(&executable_content_send.event_expr);
+        self.writer.write_data(&executable_content_send.event_expr);
 
-        self.writer
-            .write_data(&executable_content_send.type_value);
-        self.writer
-            .write_data(&executable_content_send.type_expr);
+        self.writer.write_data(&executable_content_send.type_value);
+        self.writer.write_data(&executable_content_send.type_expr);
 
         self.writer.write_uint(executable_content_send.delay_ms);
-        self.writer
-            .write_data(&executable_content_send.delay_expr);
+        self.writer.write_data(&executable_content_send.delay_expr);
     }
 
     pub fn write_executable_content_raise(&mut self, executable_content_raise: &Raise) {

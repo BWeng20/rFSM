@@ -4,10 +4,10 @@
 //! See [GitHub:Boa Engine](https://github.com/boa-dev/boa).
 
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::string::ToString;
 #[cfg(test)]
 use std::{println as warn, println as error};
-use std::ops::Deref;
 
 #[cfg(test)]
 #[cfg(feature = "Debug")]
@@ -30,7 +30,11 @@ use boa_gc::{empty_trace, Finalize, Trace};
 #[cfg(not(test))]
 use log::{error, warn};
 
-use crate::datamodel::{Data, Datamodel, DatamodelFactory, GlobalDataArc, EVENT_VARIABLE_FIELD_DATA, EVENT_VARIABLE_FIELD_INVOKE_ID, EVENT_VARIABLE_FIELD_NAME, EVENT_VARIABLE_FIELD_ORIGIN, EVENT_VARIABLE_FIELD_ORIGIN_TYPE, EVENT_VARIABLE_FIELD_SEND_ID, EVENT_VARIABLE_FIELD_TYPE, EVENT_VARIABLE_NAME, DataArc, create_data_arc};
+use crate::datamodel::{
+    create_data_arc, Data, DataArc, Datamodel, DatamodelFactory, GlobalDataArc, EVENT_VARIABLE_FIELD_DATA,
+    EVENT_VARIABLE_FIELD_INVOKE_ID, EVENT_VARIABLE_FIELD_NAME, EVENT_VARIABLE_FIELD_ORIGIN,
+    EVENT_VARIABLE_FIELD_ORIGIN_TYPE, EVENT_VARIABLE_FIELD_SEND_ID, EVENT_VARIABLE_FIELD_TYPE, EVENT_VARIABLE_NAME,
+};
 use crate::event_io_processor::SYS_IO_PROCESSORS;
 
 #[cfg(feature = "Trace")]
@@ -293,10 +297,8 @@ impl ECMAScriptDatamodel {
 
     pub fn data_arc_to_js(&mut self, data: &DataArc) -> JsValue {
         match data.lock() {
-            Ok(l) => {
-                self.data_value_to_js( l.deref() )
-            }
-            Err(_) => JsValue::Null
+            Ok(l) => self.data_value_to_js(l.deref()),
+            Err(_) => JsValue::Null,
         }
     }
 
@@ -320,7 +322,7 @@ impl ECMAScriptDatamodel {
                 let js_map = JsMap::new(&mut self.context);
                 for (key, d) in v {
                     let djs = self.data_value_to_js(&d.lock().unwrap());
-                    let _ = js_map.set(js_string!(key.clone()), djs, &mut  self.context);
+                    let _ = js_map.set(js_string!(key.clone()), djs, &mut self.context);
                 }
                 JsValue::from(js_map)
             }
@@ -342,7 +344,7 @@ impl ECMAScriptDatamodel {
                     arg_list.reserve(len);
                     for i in 0..len {
                         let v = ar.get(i, ctx).unwrap();
-                        if let Ok(av) = Self::js_to_data_value(&v,ctx) {
+                        if let Ok(av) = Self::js_to_data_value(&v, ctx) {
                             arg_list.push(av)
                         }
                     }
@@ -358,7 +360,8 @@ impl ECMAScriptDatamodel {
             let rt = if let Some(action) = data
                 .actions
                 .actions
-                .lock().unwrap()
+                .lock()
+                .unwrap()
                 .get_mut(action_name.as_str())
             {
                 action.execute(&arg_list, &data)
@@ -386,7 +389,8 @@ impl ECMAScriptDatamodel {
             let loc = fsm.state_name_to_id.get(&name.to_std_string().unwrap());
             if fsm
                 .global_data
-                .lock().unwrap()
+                .lock()
+                .unwrap()
                 .configuration
                 .data
                 .contains(loc.unwrap())
@@ -557,7 +561,8 @@ impl Datamodel for ECMAScriptDatamodel {
         let v = self.data_arc_to_js(&data);
         self.set_js_property(name, v);
         self.global_data
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .data
             .set_undefined_arc(name.to_string(), data);
     }

@@ -33,7 +33,6 @@ impl PartialEq for ExpressionResult {
     }
 }
 
-
 pub trait Expression: ToAny + Debug {
     fn execute(&self, context: &mut GlobalDataLock, allow_undefined: bool) -> ExpressionResult;
 }
@@ -58,8 +57,7 @@ impl Expression for ExpressionArray {
     fn execute(&self, context: &mut GlobalDataLock, allow_undefined: bool) -> ExpressionResult {
         let mut v = Vec::with_capacity(self.array.len());
         for item in &self.array {
-            match  item.execute(context, allow_undefined)
-            {
+            match item.execute(context, allow_undefined) {
                 Error(err) => {
                     return Error(err);
                 }
@@ -136,12 +134,9 @@ impl ExpressionVariable {
 }
 
 impl Expression for ExpressionVariable {
-
     fn execute(&self, context: &mut GlobalDataLock, allow_undefined: bool) -> ExpressionResult {
         match context.data.get(&self.name) {
-            Some(value) => {
-                ExpressionResult::Value( value.clone() )
-            }
+            Some(value) => ExpressionResult::Value(value.clone()),
             None => {
                 if allow_undefined {
                     context.data.set_undefined(self.name.clone(), Data::None());
@@ -153,7 +148,6 @@ impl Expression for ExpressionVariable {
         }
     }
 }
-
 
 #[derive(PartialEq, Debug, Clone)]
 #[repr(u8)]
@@ -189,41 +183,29 @@ impl ExpressionMemberAccess {
 impl Expression for ExpressionMemberAccess {
     fn execute(&self, context: &mut GlobalDataLock, allow_undefined: bool) -> ExpressionResult {
         match self.left.execute(context, allow_undefined) {
-            Error(err) => {
-                Error(err)
-            }
-            Value(val) => {
-                match val.lock().unwrap().deref_mut() {
-                    Data::Integer(_) |
-                    Data::Double(_) |
-                    Data::String(_) |
-                    Data::Boolean(_) |
-                    Data::Array(_) |
-                    Data::Source(_) |
-                    Data::Null() |
-                    Data::None() => {
-                        Error("Can't assign to value".to_string())
-                    }
-                    Data::Map(m) => {
-                        match m.get(&self.member_name) {
-                            None => {
-                                if allow_undefined {
-                                    m.insert(self.member_name.clone(), create_data_arc(Data::None()) );
-                                    Value(m.get(&self.member_name).unwrap().clone())
-                                } else {
-                                    Error(format!("Member {} not found", self.member_name))
-                                }
-                            }
-                            Some(member) => {
-                                Value(member.clone())
-                            }
+            Error(err) => Error(err),
+            Value(val) => match val.lock().unwrap().deref_mut() {
+                Data::Integer(_)
+                | Data::Double(_)
+                | Data::String(_)
+                | Data::Boolean(_)
+                | Data::Array(_)
+                | Data::Source(_)
+                | Data::Null()
+                | Data::None() => Error("Can't assign to value".to_string()),
+                Data::Map(m) => match m.get(&self.member_name) {
+                    None => {
+                        if allow_undefined {
+                            m.insert(self.member_name.clone(), create_data_arc(Data::None()));
+                            Value(m.get(&self.member_name).unwrap().clone())
+                        } else {
+                            Error(format!("Member {} not found", self.member_name))
                         }
                     }
-                    Data::Error(err) => {
-                        Error(err.clone())
-                    }
-                }
-            }
+                    Some(member) => Value(member.clone()),
+                },
+                Data::Error(err) => Error(err.clone()),
+            },
         }
     }
 }
@@ -247,17 +229,13 @@ impl Expression for ExpressionAssign {
         println!("Assign {:?} <- {:?}", left_result, right_result);
         match left_result {
             Error(err) => Error(err),
-            Value(v) =>
-                {
-                    match right_result {
-                        Error(err) => { Error(err) }
-                        Value(vr) => {
-                            *(v.lock().unwrap().deref_mut()) = vr.lock().unwrap().deref().clone();
-                            Value(v.clone())
-                        }
-                    }
+            Value(v) => match right_result {
+                Error(err) => Error(err),
+                Value(vr) => {
+                    *(v.lock().unwrap().deref_mut()) = vr.lock().unwrap().deref().clone();
+                    Value(v.clone())
                 }
-
+            },
         }
     }
 }
@@ -280,19 +258,17 @@ impl Expression for ExpressionAssignUndefined {
             Error(err) => {
                 return Error(err);
             }
-            Value(val) => {
-                val
-            }
+            Value(val) => val,
         };
         let left_result = self.left.execute(context, true);
         match left_result {
-            Error(err) => {
-                Error(err)
-            }
+            Error(err) => Error(err),
             Value(left_value) => {
-                right_result.lock().unwrap().deref().clone_into(
-                    left_value.lock().unwrap().deref_mut()
-                );
+                right_result
+                    .lock()
+                    .unwrap()
+                    .deref()
+                    .clone_into(left_value.lock().unwrap().deref_mut());
                 Value(left_value.clone())
             }
         }
@@ -319,18 +295,25 @@ impl ExpressionOperator {
 impl Expression for ExpressionOperator {
     fn execute(&self, context: &mut GlobalDataLock, allow_undefined: bool) -> ExpressionResult {
         let left_result = match self.left.execute(context, allow_undefined) {
-            Error(err) => { return Error(err); }
-            Value(val) => { val.clone() }
+            Error(err) => {
+                return Error(err);
+            }
+            Value(val) => val.clone(),
         };
         let right_result = match self.right.execute(context, allow_undefined) {
-            Error(err) => { return Error(err); }
-            Value(val) => { val.clone() }
+            Error(err) => {
+                return Error(err);
+            }
+            Value(val) => val.clone(),
         };
         println!(
             "execute {:?} {:?}  {:?}",
             left_result, self.operator, right_result
         );
-        let result_data = left_result.lock().unwrap().operation(self.operator.clone(), right_result.lock().unwrap().deref());
+        let result_data = left_result
+            .lock()
+            .unwrap()
+            .operation(self.operator.clone(), right_result.lock().unwrap().deref());
         ExpressionResult::Value(create_data_arc(result_data))
     }
 }

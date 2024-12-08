@@ -19,8 +19,7 @@ pub trait ProtocolWriter<W: Write> {
     fn write_option_string(&mut self, value: &Option<String>);
 
     /// Writes a Data Value via an Arc
-    fn write_data_arc(&mut self, value: &DataArc)
-    {
+    fn write_data_arc(&mut self, value: &DataArc) {
         match value.lock() {
             Ok(guard) => {
                 self.write_data(&guard);

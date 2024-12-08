@@ -27,13 +27,17 @@ use std::{fmt, thread};
 #[cfg(not(test))]
 use log::error;
 
+use crate::actions::{Action, ActionWrapper};
 #[cfg(not(test))]
 #[cfg(feature = "Debug")]
 use log::debug;
-use crate::actions::{Action, ActionWrapper};
 use timer::Guard;
 
-use crate::datamodel::{Data, DataStore, Datamodel, DatamodelFactory, GlobalDataArc, NullDatamodelFactory, NULL_DATAMODEL, NULL_DATAMODEL_LC, SCXML_INVOKE_TYPE, SCXML_INVOKE_TYPE_SHORT, SESSION_ID_VARIABLE_NAME, SESSION_NAME_VARIABLE_NAME, DataArc};
+use crate::datamodel::{
+    Data, DataArc, DataStore, Datamodel, DatamodelFactory, GlobalDataArc, NullDatamodelFactory, NULL_DATAMODEL,
+    NULL_DATAMODEL_LC, SCXML_INVOKE_TYPE, SCXML_INVOKE_TYPE_SHORT, SESSION_ID_VARIABLE_NAME,
+    SESSION_NAME_VARIABLE_NAME,
+};
 #[cfg(feature = "ECMAScript")]
 use crate::ecma_script_datamodel::ECMAScriptDatamodelFactory;
 #[cfg(feature = "ECMAScript")]
@@ -99,7 +103,8 @@ pub fn start_fsm_with_data_and_finish_mode(
             // FSM shall enter the final configuration during exct.
             let _ = session
                 .global_data
-                .lock().unwrap()
+                .lock()
+                .unwrap()
                 .final_configuration
                 .insert(Vec::new());
         }
@@ -1361,10 +1366,7 @@ impl Fsm {
             let session_id = datamodel.global_s().lock().unwrap().session_id;
             datamodel.initialize_read_only(SESSION_ID_VARIABLE_NAME, Data::Integer(session_id as i64));
             // TODO :Escape name
-            datamodel.initialize_read_only(
-                SESSION_NAME_VARIABLE_NAME,
-                Data::String(self.name.clone()),
-            );
+            datamodel.initialize_read_only(SESSION_NAME_VARIABLE_NAME, Data::String(self.name.clone()));
 
             {
                 let mut gd = get_global!(datamodel);
@@ -2757,7 +2759,13 @@ impl Fsm {
     fn isInFinalState(&self, datamodel: &dyn Datamodel, s: StateId) -> bool {
         if self.isCompoundState(s) {
             self.getChildStates(s).some(&|cs: &StateId| -> bool {
-                self.isFinalStateId(*cs) && datamodel.global_s().lock().unwrap().configuration.isMember(cs)
+                self.isFinalStateId(*cs)
+                    && datamodel
+                        .global_s()
+                        .lock()
+                        .unwrap()
+                        .configuration
+                        .isMember(cs)
             })
         } else if self.isParallelState(s) {
             self.getChildStates(s)

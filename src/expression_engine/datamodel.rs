@@ -1,10 +1,14 @@
 //! Implements the SCXML Data model for rFSM Expressions.\
 
+use log::{debug, error};
 use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
-use log::{debug, error};
 
-use crate::datamodel::{Data, Datamodel, DatamodelFactory, GlobalDataArc, EVENT_VARIABLE_FIELD_DATA, EVENT_VARIABLE_FIELD_INVOKE_ID, EVENT_VARIABLE_FIELD_NAME, EVENT_VARIABLE_FIELD_ORIGIN, EVENT_VARIABLE_FIELD_ORIGIN_TYPE, EVENT_VARIABLE_FIELD_SEND_ID, EVENT_VARIABLE_FIELD_TYPE, EVENT_VARIABLE_NAME, DataArc, create_data_arc};
+use crate::datamodel::{
+    create_data_arc, Data, DataArc, Datamodel, DatamodelFactory, GlobalDataArc, EVENT_VARIABLE_FIELD_DATA,
+    EVENT_VARIABLE_FIELD_INVOKE_ID, EVENT_VARIABLE_FIELD_NAME, EVENT_VARIABLE_FIELD_ORIGIN,
+    EVENT_VARIABLE_FIELD_ORIGIN_TYPE, EVENT_VARIABLE_FIELD_SEND_ID, EVENT_VARIABLE_FIELD_TYPE, EVENT_VARIABLE_NAME,
+};
 use crate::expression_engine::expressions::ExpressionResult;
 use crate::expression_engine::expressions::ExpressionResult::Value;
 use crate::expression_engine::parser::ExpressionParser;
@@ -31,7 +35,8 @@ impl RFsmExpressionDatamodel {
     fn set_arc(&mut self, name: &str, data: DataArc) {
         println!("set {} = {}", name, data.lock().unwrap());
         self.global_data
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .data
             .set_undefined_arc(name.to_string(), data);
     }
@@ -139,7 +144,7 @@ impl Datamodel for RFsmExpressionDatamodel {
                     if !src.is_empty() {
                         // The data from state-data needs to be evaluated
                         // TODO: Escape
-                        let data_lock =&mut self.global_data.lock().unwrap();
+                        let data_lock = &mut self.global_data.lock().unwrap();
                         let rs = ExpressionParser::execute(src.clone(), data_lock);
                         match rs {
                             Value(val) => {
@@ -267,7 +272,10 @@ impl Datamodel for RFsmExpressionDatamodel {
     ) -> bool {
         #[cfg(feature = "Debug")]
         debug!("ForEach: array: {}", array_expression);
-        let data = ExpressionParser::execute(array_expression.to_string(), &mut self.global_data.lock().unwrap());
+        let data = ExpressionParser::execute(
+            array_expression.to_string(),
+            &mut self.global_data.lock().unwrap(),
+        );
         match data {
             Value(r) => {
                 match r.lock().unwrap().deref() {
@@ -294,7 +302,7 @@ impl Datamodel for RFsmExpressionDatamodel {
                             for data in array {
                                 #[cfg(feature = "Debug")]
                                 debug!("ForEach: #{} {:?}", idx, data);
-                                self.set_arc(item_name, data.clone() );
+                                self.set_arc(item_name, data.clone());
                                 if !index.is_empty() {
                                     self.set(index, Data::Integer(idx));
                                 }
@@ -336,7 +344,7 @@ impl Datamodel for RFsmExpressionDatamodel {
                 Data::Integer(v) => {
                     // NaN Test
                     Ok(!(v != v || v.abs() == 0))
-                },
+                }
                 Data::Double(v) => Ok(!(v != v || v.abs() == 0f64)),
                 Data::Source(s) | Data::String(s) => Ok(!s.is_empty()),
                 Data::Boolean(b) => Ok(*b),

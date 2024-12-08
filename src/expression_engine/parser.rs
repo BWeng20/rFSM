@@ -1,7 +1,10 @@
 //! Implementation of a simple expression parser.
 
 use crate::datamodel::{Data, GlobalDataLock};
-use crate::expression_engine::expressions::{get_expression_as, Expression, ExpressionArray, ExpressionAssign, ExpressionAssignUndefined, ExpressionConstant, ExpressionMemberAccess, ExpressionMethod, ExpressionOperator, ExpressionResult, Operator, ExpressionVariable};
+use crate::expression_engine::expressions::{
+    get_expression_as, Expression, ExpressionArray, ExpressionAssign, ExpressionAssignUndefined, ExpressionConstant,
+    ExpressionMemberAccess, ExpressionMethod, ExpressionOperator, ExpressionResult, ExpressionVariable, Operator,
+};
 use crate::fsm::vec_to_string;
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
@@ -645,11 +648,11 @@ impl ExpressionParser {
                         stack[si] = ExpressionParserItem::SExpression(ex);
                     }
                     Token::Separator('.') => {
-                            if 2 < best_idx_prio {
-                                best_idx = si;
-                                best_idx_prio = 2;
-                            }
-                    },
+                        if 2 < best_idx_prio {
+                            best_idx = si;
+                            best_idx_prio = 2;
+                        }
+                    }
                     Token::Operator(operator) => {
                         let prio = match operator {
                             Operator::Not => 3u8,
@@ -766,12 +769,12 @@ impl ExpressionParser {
 mod tests {
     use crate::datamodel::{create_data_arc, create_global_data_arc, Data, GlobalDataArc};
     use crate::expression_engine::datamodel::RFsmExpressionDatamodel;
+    use crate::expression_engine::expressions::ExpressionResult;
     use crate::expression_engine::parser::{ExpressionLexer, ExpressionParser, NumericToken, Operator, Token};
+    use crate::fsm::GlobalData;
     use std::collections::HashMap;
     use std::ops::Deref;
     use std::sync::Mutex;
-    use crate::expression_engine::expressions::ExpressionResult;
-    use crate::fsm::GlobalData;
 
     #[test]
     fn can_parse_numbers() {
@@ -1006,7 +1009,11 @@ mod tests {
         print!("Parsed: {:?}", r);
         let result_data = r.execute(&mut data.global_data.lock().unwrap(), true);
         println!(" => {:?}", result_data);
-        assert!(result_data.eq(&ExpressionResult::Value(create_data_arc(Data::Double(12f64 * 3.4f64)))));
+        assert!(
+            result_data.eq(&ExpressionResult::Value(create_data_arc(Data::Double(
+                12f64 * 3.4f64
+            ))))
+        );
 
         let r = ExpressionParser::parse("(12 * 2)".to_string()).unwrap();
         print!("Parsed: {:?}", r);
@@ -1029,14 +1036,22 @@ mod tests {
         print!("Parsed: {:?}", r);
         let result_data = r.execute(&mut data.global_data.lock().unwrap(), true);
         println!(" => {:?}", result_data);
-        assert!(result_data.eq(&ExpressionResult::Value(create_data_arc(Data::Integer(12 + (2 * 4))))));
+        assert!(
+            result_data.eq(&ExpressionResult::Value(create_data_arc(Data::Integer(
+                12 + (2 * 4)
+            ))))
+        );
 
         // Check that forced "()" work
         let r = ExpressionParser::parse("(12 + 2) * 4".to_string()).unwrap();
         print!("Parsed: {:?}", r);
         let result_data = r.execute(&mut data.global_data.lock().unwrap(), true);
         println!(" => {:?}", result_data);
-        assert!(result_data.eq(&ExpressionResult::Value(create_data_arc(Data::Integer((12 + 2) * 4)))));
+        assert!(
+            result_data.eq(&ExpressionResult::Value(create_data_arc(Data::Integer(
+                (12 + 2) * 4
+            ))))
+        );
     }
 
     #[test]
@@ -1058,10 +1073,17 @@ mod tests {
         let data = RFsmExpressionDatamodel::new(create_global_data_arc());
         let mut hs1 = HashMap::new();
         let mut hs2 = HashMap::new();
-        hs2.insert("c".to_string(), create_data_arc(Data::String("hello".to_string())));
+        hs2.insert(
+            "c".to_string(),
+            create_data_arc(Data::String("hello".to_string())),
+        );
         hs1.insert("b".to_string(), create_data_arc(Data::Map(hs2)));
 
-        data.global_data.lock().unwrap().data.set_undefined("A".to_string(), Data::Map(hs1));
+        data.global_data
+            .lock()
+            .unwrap()
+            .data
+            .set_undefined("A".to_string(), Data::Map(hs1));
         let rs1 = r1.execute(&mut data.global_data.lock().unwrap(), true);
         println!("==> {:?}", rs1);
         assert!(if let ExpressionResult::Value(_x) = rs1 {
@@ -1072,7 +1094,10 @@ mod tests {
 
         let rs2 = r2.execute(&mut data.global_data.lock().unwrap(), true);
         println!("==> {:?}", rs2);
-        assert_eq!(rs2, ExpressionResult::Value(create_data_arc(Data::String("hello".to_string()))))
+        assert_eq!(
+            rs2,
+            ExpressionResult::Value(create_data_arc(Data::String("hello".to_string())))
+        )
     }
 
     #[test]
@@ -1085,9 +1110,20 @@ mod tests {
 
         let rs1 = r1.execute(&mut data.global_data.lock().unwrap(), true);
         println!("==> {:?}", rs1);
-        assert_eq!(rs1, ExpressionResult::Value(create_data_arc(Data::Integer(12))));
         assert_eq!(
-            data.global_data.lock().unwrap().data.get(&"A".to_string()).unwrap().lock().unwrap().deref(),
+            rs1,
+            ExpressionResult::Value(create_data_arc(Data::Integer(12)))
+        );
+        assert_eq!(
+            data.global_data
+                .lock()
+                .unwrap()
+                .data
+                .get(&"A".to_string())
+                .unwrap()
+                .lock()
+                .unwrap()
+                .deref(),
             &Data::Integer(12)
         );
     }

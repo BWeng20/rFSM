@@ -20,8 +20,7 @@ pub trait ProtocolReader<R: Read> {
     fn read_option_string(&mut self) -> Option<String>;
 
     /// Reads a Data (enum) value
-    fn read_data_arc(&mut self) -> DataArc
-    {
+    fn read_data_arc(&mut self) -> DataArc {
         create_data_arc(self.read_data())
     }
 

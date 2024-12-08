@@ -596,10 +596,10 @@ impl ExecutableContent for SendParameters {
             return false;
         }
 
-        let target_data = target.lock().unwrap();
-        if delay_ms > 0 && target_data.to_string().eq(SCXML_TARGET_INTERNAL) {
+        let target_guard = target.lock().unwrap();
+        if delay_ms > 0 && target_guard.to_string().eq(SCXML_TARGET_INTERNAL) {
             // Can't send via internal queue
-            error!("Send: illegal delay for target {}", target_data);
+            error!("Send: illegal delay for target {}", target_guard);
             datamodel.internal_error_execution_for_event(&send_id, &fsm.caller_invoke_id);
             return false;
         }
@@ -639,28 +639,28 @@ impl ExecutableContent for SendParameters {
         let result = if delay_ms > 0 {
             let iop_opt = datamodel.get_io_processor(type_val_str);
             if let Some(iop) = iop_opt {
-                let _iopc = iop.clone();
+                let iopc = iop.clone();
                 #[cfg(feature = "Debug")]
                 debug!("schedule '{}' for {}", event, delay_ms);
                 let global_clone = datamodel.global_s().clone();
                 let send_id_clone = send_id.clone();
+                let target_str = target_guard.to_string();
                 let tg = fsm.schedule(delay_ms, move || {
                     #[cfg(feature = "Debug")]
                     // debug!("send {} to {}", event, target_clone);
                     if let Some(sid) = &send_id_clone {
                         global_clone.lock().unwrap().delayed_send.remove(sid);
                     }
-                    /*
                     iopc.lock()
                         .unwrap()
-                        .send(&global_clone, target.to_string().as_str(), event.clone());
-                        */
+                        .send(&global_clone, target_str.as_str(), event.clone());
                 });
                 if let Some(g) = tg {
                     if let Some(sid) = &send_id {
                         datamodel
                             .global()
-                            .lock().unwrap()
+                            .lock()
+                            .unwrap()
                             .delayed_send
                             .insert(sid.clone(), g);
                     } else {
@@ -674,8 +674,8 @@ impl ExecutableContent for SendParameters {
             }
         } else {
             #[cfg(feature = "Debug")]
-            debug!("send '{}' to '{}'", event, target);
-            datamodel.send(type_val_str, &target.lock().unwrap(), event.clone())
+            debug!("send '{}' to '{}'", event, target_guard);
+            datamodel.send(type_val_str, &target_guard, event.clone())
         };
 
         if !result {
