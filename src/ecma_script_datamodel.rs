@@ -508,7 +508,8 @@ impl Datamodel for ECMAScriptDatamodel {
     fn set_from_state_data(&mut self, data: &HashMap<String, DataArc>, set_data: bool) {
         for (name, data) in data {
             if set_data {
-                if let Data::Source(src) = data.lock().unwrap().deref() {
+                let data_guard = data.lock().unwrap();
+                if let Data::Source(src) = data_guard.deref() {
                     if !src.is_empty() {
                         let rs = self.context.eval(Source::from_bytes(src.as_str()));
                         println!("set_from_state_data {} -> {:?}", src, rs);
@@ -531,8 +532,8 @@ impl Datamodel for ECMAScriptDatamodel {
                         self.set_js_property(name.as_str(), JsValue::Null);
                     };
                 } else {
-                    let ds = self.data_arc_to_js(data);
-                    println!("set_from_state_data {} / {:?} -> {:?}", name, data, ds);
+                    let ds = self.data_value_to_js(data_guard.deref());
+                    println!("set_from_state_data {} / {:?} -> {:?}", name, data_guard.deref(), ds);
 
                     self.set_js_property(name.as_str(), ds);
                 }
