@@ -1363,7 +1363,7 @@ impl Fsm {
             // TODO :Escape name
             datamodel.initialize_read_only(
                 SESSION_NAME_VARIABLE_NAME,
-                Data::String(format!("{}", self.name)),
+                Data::String(self.name.clone()),
             );
 
             {

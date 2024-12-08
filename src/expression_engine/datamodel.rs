@@ -16,7 +16,7 @@ pub const RFSM_EXPRESSION_DATAMODEL_LC: &str = "rfsm-expression";
 pub struct RFsmExpressionDatamodel {
     pub global_data: GlobalDataArc,
     pub readonly: HashSet<String>,
-    null_data: Data,
+    null_data: DataArc,
 }
 
 impl RFsmExpressionDatamodel {
@@ -24,7 +24,7 @@ impl RFsmExpressionDatamodel {
         RFsmExpressionDatamodel {
             global_data,
             readonly: HashSet::new(),
-            null_data: Data::Null(),
+            null_data: create_data_arc(Data::Null()),
         }
     }
 
@@ -168,17 +168,17 @@ impl Datamodel for RFsmExpressionDatamodel {
 
     fn initialize_read_only_arc(&mut self, name: &str, value: DataArc) {
         // TODO
-        self.set_arc(&name.to_string(), value);
+        self.set_arc(name, value);
     }
 
     fn set_arc(&mut self, name: &str, data: DataArc) {
-        self.set_arc(&name.to_string(), data);
+        self.set_arc(name, data);
     }
 
     fn set_event(&mut self, event: &Event) {
         let data_value = match &event.param_values {
             None => match &event.content {
-                None => create_data_arc(Data::Null()),
+                None => self.null_data.clone(),
                 Some(c) => c.clone(),
             },
             Some(pv) => {
@@ -319,6 +319,7 @@ impl Datamodel for RFsmExpressionDatamodel {
         }
     }
 
+    #[allow(clippy::eq_op)] // For NaN test, as "is_nan" method is not yet stable.
     fn execute_condition(&mut self, script: &Data) -> Result<bool, String> {
         // W3C:
         // B.2.3 Conditional Expressions
@@ -332,7 +333,10 @@ impl Datamodel for RFsmExpressionDatamodel {
         //  4. Return true.
         let r = match self.execute_internal(script, false) {
             Ok(val) => match val.arc.lock().unwrap().deref() {
-                Data::Integer(v) => Ok(!(v != v || v.abs() == 0)),
+                Data::Integer(v) => {
+                    // NaN Test
+                    Ok(!(v != v || v.abs() == 0))
+                },
                 Data::Double(v) => Ok(!(v != v || v.abs() == 0f64)),
                 Data::Source(s) | Data::String(s) => Ok(!s.is_empty()),
                 Data::Boolean(b) => Ok(*b),

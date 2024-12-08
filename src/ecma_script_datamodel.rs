@@ -311,7 +311,7 @@ impl ECMAScriptDatamodel {
             Data::Array(v) => {
                 let js_array = JsArray::new(&mut self.context);
                 for data in v {
-                    let djs = self.data_arc_to_js(&data);
+                    let djs = self.data_arc_to_js(data);
                     let _ = js_array.push(djs, &mut self.context);
                 }
                 JsValue::from(js_array)
@@ -556,7 +556,7 @@ impl Datamodel for ECMAScriptDatamodel {
     fn set_arc(&mut self, name: &str, data: DataArc) {
         let v = self.data_arc_to_js(&data);
         self.set_js_property(name, v);
-        let _ = self.global_data
+        self.global_data
             .lock().unwrap()
             .data
             .set_undefined_arc(name.to_string(), data);

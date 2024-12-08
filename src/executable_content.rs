@@ -633,7 +633,7 @@ impl ExecutableContent for SendParameters {
             } else {
                 Some(data_vec.clone())
             },
-            content : content,
+            content,
         };
 
         let result = if delay_ms > 0 {

@@ -644,16 +644,11 @@ impl ExpressionParser {
                         let ex = Box::new(ExpressionVariable::new(identifier));
                         stack[si] = ExpressionParserItem::SExpression(ex);
                     }
-                    Token::Separator(s) => match *s {
-                        '.' => {
+                    Token::Separator('.') => {
                             if 2 < best_idx_prio {
                                 best_idx = si;
                                 best_idx_prio = 2;
                             }
-                        }
-                        _ => {
-                            panic!("Internal error")
-                        }
                     },
                     Token::Operator(operator) => {
                         let prio = match operator {

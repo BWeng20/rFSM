@@ -23,7 +23,7 @@ pub trait ProtocolWriter<W: Write> {
     {
         match value.lock() {
             Ok(guard) => {
-                self.write_data(&*guard);
+                self.write_data(&guard);
             }
             Err(_) => {
                 self.write_data(&Data::Null());

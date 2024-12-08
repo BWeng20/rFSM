@@ -200,7 +200,7 @@ pub trait Datamodel {
         let ioc = self.get_io_processor(ioc_processor);
         if let Some(ic) = ioc {
             let mut icg = ic.lock().unwrap();
-            icg.send(&self.global(), target.to_string().as_str(), event)
+            icg.send(self.global(), target.to_string().as_str(), event)
         } else {
             false
         }
@@ -277,10 +277,7 @@ pub trait Datamodel {
             None => None,
             Some(ct) => {
                 match &ct.content_expr {
-                    None => match &ct.content {
-                        None => None,
-                        Some(ct_content) => Some(create_data_arc(Data::Source(ct_content.clone()))),
-                    },
+                    None => ct.content.as_ref().map(|ct_content| create_data_arc(Data::Source(ct_content.clone()))),
                     Some(expr) => {
                         match self.execute(&Data::Source(expr.clone())) {
                             Err(msg) => {
@@ -866,10 +863,7 @@ impl Data {
             Data::Error(_) => 0f64,
             Data::Source(src) => {
                 let r = src.parse::<f64>();
-                match r {
-                    Ok(v) => v,
-                    Err(_) => 0f64,
-                }
+                r.unwrap_or(0f64)
             }
             Data::None() => 0f64,
         }
@@ -947,14 +941,7 @@ impl DataArc {
 impl PartialEq for DataArc {
 
     fn eq(&self, other: &Self) -> bool {
-        if Arc::ptr_eq(&self.arc, &other.arc)
-        {
-            true
-        } else if self.arc.lock().unwrap().eq( other.lock().unwrap().deref() ) {
-            true
-        } else {
-            false
-        }
+        Arc::ptr_eq(&self.arc, &other.arc) || self.arc.lock().unwrap().eq( other.lock().unwrap().deref())
     }
 
 }
@@ -1003,12 +990,11 @@ impl DataStore {
 
     pub fn set(&mut self, key: String, data: Data) -> bool {
         // W3C want to assign only to defined variables.
-        // TODO: Optimize this (with one "Get")
-        if self.map.contains_key(&key) {
-            self.map.insert(key, create_data_arc(data));
-            true
-        } else {
-            false
+        if let std::collections::hash_map::Entry::Occupied(mut e) = self.map.entry(key) {
+            e.insert(create_data_arc(data));
+             true
+         } else {
+             false
         }
     }
 
