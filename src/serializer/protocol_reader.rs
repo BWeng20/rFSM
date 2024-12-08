@@ -1,6 +1,6 @@
 //! Protocol to read a persistent binary version of a Fsm.
 
-use crate::datamodel::{Data,DataId};
+use crate::datamodel::{create_data_arc, Data, DataArc};
 use std::io::Read;
 
 /// Trait for reading binary data in some platform independent way.\
@@ -20,10 +20,13 @@ pub trait ProtocolReader<R: Read> {
     fn read_option_string(&mut self) -> Option<String>;
 
     /// Reads a Data (enum) value
-    fn read_data_value(&mut self) -> Data;
+    fn read_data_arc(&mut self) -> DataArc
+    {
+        create_data_arc(self.read_data())
+    }
 
-    /// Reads a Data id value
-    fn read_data_id(&mut self) -> DataId;
+    /// Reads a Data (enum) value
+    fn read_data(&mut self) -> Data;
 
     /// Reads a string
     fn read_string(&mut self) -> String;

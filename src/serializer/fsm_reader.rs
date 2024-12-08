@@ -5,7 +5,7 @@
 use log::debug;
 use std::collections::HashMap;
 
-use crate::datamodel::Data;
+use crate::datamodel::{Data, DataArc};
 use log::info;
 use std::io::Read;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -116,12 +116,12 @@ where
         self.reader.read_uint() as ExecutableContentId
     }
 
-    pub fn read_data_map(&mut self, value: &mut HashMap<String, Data>) {
+    pub fn read_data_map(&mut self, value: &mut HashMap<String, DataArc>) {
         value.clear();
         let len = self.reader.read_usize();
         for _i in 0..len {
             let key = self.reader.read_string();
-            value.insert(key, self.reader.read_data_value());
+            value.insert(key, self.reader.read_data_arc());
         }
     }
 
@@ -177,10 +177,10 @@ where
             invoke.parent_state_name = self.reader.read_string();
         }
         invoke.doc_id = self.read_doc_id();
-        invoke.src_expr = self.reader.read_data_value();
-        invoke.src = self.reader.read_data_value();
-        invoke.type_expr = self.reader.read_data_value();
-        invoke.type_name = self.reader.read_data_value();
+        invoke.src_expr = self.reader.read_data();
+        invoke.src = self.reader.read_data();
+        invoke.type_expr = self.reader.read_data();
+        invoke.type_name = self.reader.read_data();
         invoke.external_id_location = self.reader.read_string();
         invoke.autoforward = self.reader.read_boolean();
         invoke.finalize = self.read_executable_content_id();
@@ -222,7 +222,7 @@ where
         transition.wildcard = (flags & 2) != 0;
 
         transition.cond = if (flags & 4) != 0 {
-            self.reader.read_data_value()
+            self.reader.read_data()
         } else {
             Data::Null()
         };
@@ -342,7 +342,7 @@ where
 
     pub fn read_executable_content_expression(&mut self) -> Box<dyn ExecutableContent> {
         let mut ec = Expression::new();
-        ec.content = self.reader.read_data_value();
+        ec.content = self.reader.read_data();
         Box::new(ec)
     }
 
@@ -377,8 +377,8 @@ where
         let mut ec = SendParameters::new();
 
         ec.name = self.reader.read_string();
-        ec.target = self.reader.read_data_value();
-        ec.target_expr = self.reader.read_data_value();
+        ec.target = self.reader.read_data();
+        ec.target_expr = self.reader.read_data();
 
         let content_flag = self.reader.read_boolean();
         if content_flag {
@@ -390,14 +390,14 @@ where
         ec.name_location = self.reader.read_string();
         self.read_parameters(&mut ec.params);
 
-        ec.event = self.reader.read_data_value();
-        ec.event_expr = self.reader.read_data_value();
+        ec.event = self.reader.read_data();
+        ec.event_expr = self.reader.read_data();
 
-        ec.type_value = self.reader.read_data_value();
-        ec.type_expr = self.reader.read_data_value();
+        ec.type_value = self.reader.read_data();
+        ec.type_expr = self.reader.read_data();
 
         ec.delay_ms = self.reader.read_uint();
-        ec.delay_expr = self.reader.read_data_value();
+        ec.delay_expr = self.reader.read_data();
 
         Box::new(ec)
     }
@@ -411,7 +411,7 @@ where
     pub fn read_executable_content_cancel(&mut self) -> Box<dyn ExecutableContent> {
         let mut ec = Cancel::new();
         ec.send_id = self.reader.read_string();
-        ec.send_id_expr = self.reader.read_data_value();
+        ec.send_id_expr = self.reader.read_data();
         Box::new(ec)
     }
 

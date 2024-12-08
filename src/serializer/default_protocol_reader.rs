@@ -9,7 +9,7 @@ use std::collections::HashMap;
 #[cfg(feature = "Debug_Serializer")]
 use log::debug;
 
-use crate::datamodel::{Data,DataId};
+use crate::datamodel::Data;
 use log::error;
 use std::io::Read;
 
@@ -131,7 +131,7 @@ impl<R: Read> DefaultProtocolReader<R> {
                 let len = self.read_usize();
                 let mut val = Vec::with_capacity(len);
                 for _i in 0..len {
-                    val.push(self.read_data_id());
+                    val.push(self.read_data_arc());
                 }
                 Data::Array(val)
             }
@@ -140,7 +140,7 @@ impl<R: Read> DefaultProtocolReader<R> {
                 let mut val = HashMap::with_capacity(len);
                 for _i in 0..len {
                     let k = self.read_string();
-                    val.insert(k, self.read_data_value());
+                    val.insert(k, self.read_data_arc());
                 }
                 Data::Map(val)
             }
@@ -153,6 +153,7 @@ impl<R: Read> DefaultProtocolReader<R> {
                 Data::Source(k)
             }
             9 => Data::None(),
+
             _ => {
                 self.error(format!("Protocol error in data value: unknown variant {}", what).as_str());
                 self.ok = false;
@@ -318,13 +319,9 @@ impl<R: Read> ProtocolReader<R> for DefaultProtocolReader<R> {
         None
     }
 
-    fn read_data_value(&mut self) -> Data {
+    fn read_data(&mut self) -> Data {
         let what = self.read_u8();
         self.read_data_value_payload(what)
-    }
-
-    fn read_data_id(&mut self) -> DataId {
-        return self.read_u16() as DataId;
     }
 
     fn read_string(&mut self) -> String {

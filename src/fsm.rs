@@ -30,15 +30,10 @@ use log::error;
 #[cfg(not(test))]
 #[cfg(feature = "Debug")]
 use log::debug;
-
 use crate::actions::{Action, ActionWrapper};
 use timer::Guard;
 
-use crate::datamodel::{
-    Data, DataStore, Datamodel, DatamodelFactory, GlobalDataArc, NullDatamodelFactory, NULL_DATAMODEL,
-    NULL_DATAMODEL_LC, SCXML_INVOKE_TYPE, SCXML_INVOKE_TYPE_SHORT, SESSION_ID_VARIABLE_NAME,
-    SESSION_NAME_VARIABLE_NAME,
-};
+use crate::datamodel::{Data, DataStore, Datamodel, DatamodelFactory, GlobalDataArc, NullDatamodelFactory, NULL_DATAMODEL, NULL_DATAMODEL_LC, SCXML_INVOKE_TYPE, SCXML_INVOKE_TYPE_SHORT, SESSION_ID_VARIABLE_NAME, SESSION_NAME_VARIABLE_NAME, DataArc};
 #[cfg(feature = "ECMAScript")]
 use crate::ecma_script_datamodel::ECMAScriptDatamodelFactory;
 #[cfg(feature = "ECMAScript")]
@@ -104,7 +99,7 @@ pub fn start_fsm_with_data_and_finish_mode(
             // FSM shall enter the final configuration during exct.
             let _ = session
                 .global_data
-                .lock()
+                .lock().unwrap()
                 .final_configuration
                 .insert(Vec::new());
         }
@@ -121,7 +116,7 @@ pub fn start_fsm_with_data_and_finish_mode(
 
     let global_data = session.global_data.clone();
     {
-        let mut gc = global_data.lock();
+        let mut gc = global_data.lock().unwrap();
         gc.actions = actions;
         let executor_state_lock = executor.state.lock();
         let guard = executor_state_lock.unwrap();
@@ -662,14 +657,14 @@ impl EventType {
 #[derive(Debug, Clone)]
 pub struct ParamPair {
     pub name: String,
-    pub value: Data,
+    pub value: DataArc,
 }
 
 impl ParamPair {
-    pub fn new_moved(name: String, value: Data) -> ParamPair {
+    pub fn new_moved(name: String, value: DataArc) -> ParamPair {
         ParamPair { name, value }
     }
-    pub fn new(name: &str, value: &Data) -> ParamPair {
+    pub fn new(name: &str, value: &DataArc) -> ParamPair {
         ParamPair {
             name: name.to_string(),
             value: value.clone(),
@@ -728,7 +723,7 @@ pub struct Event {
     pub param_values: Option<Vec<ParamPair>>,
 
     /// Content from \<content\> element.
-    pub content: Option<Data>,
+    pub content: Option<DataArc>,
 }
 
 impl Display for Event {
@@ -755,7 +750,7 @@ impl Event {
         prefix: &str,
         id: &str,
         data_params: Option<Vec<ParamPair>>,
-        data_content: Option<Data>,
+        data_content: Option<DataArc>,
         event_type: EventType,
     ) -> Event {
         Event {
@@ -1025,7 +1020,7 @@ pub struct GlobalData {
 
     /// Will contain after execution the final configuration, if set before.
     pub final_configuration: Option<Vec<String>>,
-    pub environment: HashMap<String, Data>,
+    pub environment: HashMap<String, DataArc>,
 
     /// Stores any delayed send (with a "sendid"), Key: sendid
     pub delayed_send: HashMap<String, Guard>,
@@ -1103,7 +1098,7 @@ impl ScxmlSession {
             session_id: id,
             thread: None,
             sender,
-            global_data: GlobalDataArc::new(),
+            global_data: GlobalDataArc::new(Mutex::new(GlobalData::new())),
             invoke_doc_id: 0,
             state_id: None,
         }
@@ -1363,7 +1358,7 @@ impl Fsm {
 
             // Initialize session variables "_name" and "_sessionid"
 
-            let session_id = datamodel.global_s().lock().session_id;
+            let session_id = datamodel.global_s().lock().unwrap().session_id;
             datamodel.initialize_read_only(SESSION_ID_VARIABLE_NAME, Data::Integer(session_id as i64));
             // TODO :Escape name
             datamodel.initialize_read_only(
@@ -2762,7 +2757,7 @@ impl Fsm {
     fn isInFinalState(&self, datamodel: &dyn Datamodel, s: StateId) -> bool {
         if self.isCompoundState(s) {
             self.getChildStates(s).some(&|cs: &StateId| -> bool {
-                self.isFinalStateId(*cs) && datamodel.global_s().lock().configuration.isMember(cs)
+                self.isFinalStateId(*cs) && datamodel.global_s().lock().unwrap().configuration.isMember(cs)
             })
         } else if self.isParallelState(s) {
             self.getChildStates(s)
@@ -3020,7 +3015,7 @@ impl Fsm {
             }
         };
 
-        let mut type_name = type_name_data.to_string();
+        let mut type_name = type_name_data.lock().unwrap().to_string();
         if type_name.eq(SCXML_INVOKE_TYPE_SHORT) {
             type_name = SCXML_INVOKE_TYPE.to_string();
         }
@@ -3058,7 +3053,7 @@ impl Fsm {
                 // Error -> Abort
                 return;
             }
-            Ok(value) => value,
+            Ok(value) => value.lock().unwrap().clone(),
         };
         let mut name_values: Vec<ParamPair> = Vec::new();
         for name in inv.name_list.as_slice() {
@@ -3102,7 +3097,7 @@ impl Fsm {
                         .as_mut()
                         .unwrap()
                         .execute_with_data_from_xml(
-                            content.to_string().as_str(),
+                            content.lock().unwrap().to_string().as_str(),
                             actions,
                             &name_values,
                             Some(session_id),
@@ -3347,7 +3342,7 @@ pub struct State {
     pub history: List<StateId>,
 
     /// The initial data values on this state.
-    pub data: HashMap<String, Data>,
+    pub data: HashMap<String, DataArc>,
 
     /// True if the state was never entered before.
     pub isFirstEntry: bool,

@@ -120,7 +120,7 @@ impl EventIOProcessor for ScxmlEventIOProcessor {
     /// <li>If neither the 'target' nor the 'targetexpr' attribute is specified, the SCXML Processor must add the event to the external event queue of the sending session.</li>
     /// </ul>
     fn send(&mut self, global: &GlobalDataArc, target: &str, mut event: Event) -> bool {
-        let mut global_lock = global.lock();
+        let mut global_lock = global.lock().unwrap();
         event.origin_type = Some(SCXML_EVENT_PROCESSOR.to_string());
         if event.origin.is_none() {
             event.origin = Some(self.get_location(global_lock.session_id).to_string());

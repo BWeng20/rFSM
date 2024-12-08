@@ -1,7 +1,7 @@
 //! Module to write a persistent binary version of a Fsm.\
 //! The format is independent of the platform byte-order
 
-use crate::datamodel::Data;
+use crate::datamodel::DataArc;
 #[cfg(feature = "Debug_Serializer")]
 use log::debug;
 use std::collections::HashMap;
@@ -97,11 +97,11 @@ where
         self.writer.write_uint(value as u64);
     }
 
-    pub fn write_data_map(&mut self, value: &HashMap<String, Data>) {
+    pub fn write_data_map(&mut self, value: &HashMap<String, DataArc>) {
         self.writer.write_usize(value.len());
         for (key, data) in value {
             self.writer.write_str(key.as_str());
-            self.writer.write_data_value(data);
+            self.writer.write_data_arc(data);
         }
     }
 
@@ -149,10 +149,10 @@ where
             self.writer.write_str(&invoke.parent_state_name);
         }
         self.write_doc_id(invoke.doc_id);
-        self.writer.write_data_value(&invoke.src_expr);
-        self.writer.write_data_value(&invoke.src);
-        self.writer.write_data_value(&invoke.type_expr);
-        self.writer.write_data_value(&invoke.type_name);
+        self.writer.write_data(&invoke.src_expr);
+        self.writer.write_data(&invoke.src);
+        self.writer.write_data(&invoke.type_expr);
+        self.writer.write_data(&invoke.type_name);
         self.writer.write_str(&invoke.external_id_location);
         self.writer.write_boolean(invoke.autoforward);
         self.write_executable_content_id(invoke.finalize);
@@ -193,7 +193,7 @@ where
         );
 
         if !transition.cond.is_empty() {
-            self.writer.write_data_value(&transition.cond);
+            self.writer.write_data(&transition.cond);
         }
         if transition.content != 0 {
             self.write_executable_content_id(transition.content);
@@ -317,13 +317,13 @@ where
 
     pub fn write_executable_content_if(&mut self, executable_content_if: &If) {
         self.writer
-            .write_data_value(&executable_content_if.condition);
+            .write_data(&executable_content_if.condition);
         self.write_executable_content_id(executable_content_if.content);
         self.write_executable_content_id(executable_content_if.else_content);
     }
     pub fn write_executable_content_expression(&mut self, executable_content_expression: &Expression) {
         self.writer
-            .write_data_value(&executable_content_expression.content);
+            .write_data(&executable_content_expression.content);
     }
 
     pub fn write_executable_content_script(&mut self, executable_content_script: &Script) {
@@ -337,7 +337,7 @@ where
     pub fn write_executable_content_log(&mut self, executable_content_log: &Log) {
         self.writer.write_str(&executable_content_log.label);
         self.writer
-            .write_data_value(&executable_content_log.expression);
+            .write_data(&executable_content_log.expression);
     }
 
     pub fn write_executable_content_for_each(&mut self, executable_content_for_each: &ForEach) {
@@ -349,9 +349,9 @@ where
     pub fn write_executable_content_send(&mut self, executable_content_send: &SendParameters) {
         self.writer.write_str(&executable_content_send.name);
         self.writer
-            .write_data_value(&executable_content_send.target);
+            .write_data(&executable_content_send.target);
         self.writer
-            .write_data_value(&executable_content_send.target_expr);
+            .write_data(&executable_content_send.target_expr);
 
         if let Some(ct) = &executable_content_send.content {
             self.writer.write_boolean(true);
@@ -365,18 +365,18 @@ where
             .write_str(&executable_content_send.name_location);
         self.write_parameters(&executable_content_send.params);
 
-        self.writer.write_data_value(&executable_content_send.event);
+        self.writer.write_data(&executable_content_send.event);
         self.writer
-            .write_data_value(&executable_content_send.event_expr);
+            .write_data(&executable_content_send.event_expr);
 
         self.writer
-            .write_data_value(&executable_content_send.type_value);
+            .write_data(&executable_content_send.type_value);
         self.writer
-            .write_data_value(&executable_content_send.type_expr);
+            .write_data(&executable_content_send.type_expr);
 
         self.writer.write_uint(executable_content_send.delay_ms);
         self.writer
-            .write_data_value(&executable_content_send.delay_expr);
+            .write_data(&executable_content_send.delay_expr);
     }
 
     pub fn write_executable_content_raise(&mut self, executable_content_raise: &Raise) {
@@ -385,7 +385,7 @@ where
     pub fn write_executable_content_cancel(&mut self, executable_content_cancel: &Cancel) {
         self.writer.write_str(&executable_content_cancel.send_id);
         self.writer
-            .write_data_value(&executable_content_cancel.send_id_expr);
+            .write_data(&executable_content_cancel.send_id_expr);
     }
 
     pub fn write_executable_content_assign(&mut self, executable_content_assign: &Assign) {

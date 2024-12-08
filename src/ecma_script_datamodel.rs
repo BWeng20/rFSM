@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::string::ToString;
 #[cfg(test)]
 use std::{println as warn, println as error};
+use std::ops::Deref;
 
 #[cfg(test)]
 #[cfg(feature = "Debug")]
@@ -29,11 +30,7 @@ use boa_gc::{empty_trace, Finalize, Trace};
 #[cfg(not(test))]
 use log::{error, warn};
 
-use crate::datamodel::{
-    Data, Datamodel, DatamodelFactory, GlobalDataArc, EVENT_VARIABLE_FIELD_DATA, EVENT_VARIABLE_FIELD_INVOKE_ID,
-    EVENT_VARIABLE_FIELD_NAME, EVENT_VARIABLE_FIELD_ORIGIN, EVENT_VARIABLE_FIELD_ORIGIN_TYPE,
-    EVENT_VARIABLE_FIELD_SEND_ID, EVENT_VARIABLE_FIELD_TYPE, EVENT_VARIABLE_NAME,
-};
+use crate::datamodel::{Data, Datamodel, DatamodelFactory, GlobalDataArc, EVENT_VARIABLE_FIELD_DATA, EVENT_VARIABLE_FIELD_INVOKE_ID, EVENT_VARIABLE_FIELD_NAME, EVENT_VARIABLE_FIELD_ORIGIN, EVENT_VARIABLE_FIELD_ORIGIN_TYPE, EVENT_VARIABLE_FIELD_SEND_ID, EVENT_VARIABLE_FIELD_TYPE, EVENT_VARIABLE_NAME, DataArc, create_data_arc};
 use crate::event_io_processor::SYS_IO_PROCESSORS;
 
 #[cfg(feature = "Trace")]
@@ -149,7 +146,7 @@ impl ECMAScriptDatamodel {
                         let dv = Vec::with_capacity(len);
                         for i in 0..len {
                             let v = ar.get(i, ctx).unwrap();
-                            if let Ok(av) = Self::js_to_data_value(&v, ctx) {
+                            if let Ok(_av) = Self::js_to_data_value(&v, ctx) {
                                 todo!()
                                 // dv.push(av)
                             }
@@ -176,7 +173,7 @@ impl ECMAScriptDatamodel {
                                     warn!("{}", err)
                                 }
                                 Ok(dt) => {
-                                    dvm.insert(name, dt);
+                                    dvm.insert(name, create_data_arc(dt));
                                 }
                             }
                         }
@@ -204,18 +201,18 @@ impl ECMAScriptDatamodel {
         }
     }
 
-    fn execute_internal(&mut self, script: &Data, handle_error: bool) -> Result<Data, String> {
+    fn execute_internal(&mut self, script: &Data, handle_error: bool) -> Result<DataArc, String> {
         let result = self.eval(script);
         match result {
             Ok(res) => {
                 if res.is_undefined() {
                     #[cfg(feature = "Debug")]
                     debug!("Execute: {} => undefined", script);
-                    Ok(Data::Null())
+                    Ok(create_data_arc(Data::Null()))
                 } else {
                     debug!("Execute: {} => {:?}", script, res);
                     match Self::js_to_data_value(&res, &mut self.context) {
-                        Ok(s) => Ok(s),
+                        Ok(s) => Ok(create_data_arc(s)),
                         Err(err) => {
                             let msg = format!(
                                 "Script Error - failed to convert result to string: {} => {}",
@@ -294,6 +291,15 @@ impl ECMAScriptDatamodel {
         r
     }
 
+    pub fn data_arc_to_js(&mut self, data: &DataArc) -> JsValue {
+        match data.lock() {
+            Ok(l) => {
+                self.data_value_to_js( l.deref() )
+            }
+            Err(_) => JsValue::Null
+        }
+    }
+
     pub fn data_value_to_js(&mut self, data: &Data) -> JsValue {
         match data {
             Data::None() => JsValue::Undefined,
@@ -304,9 +310,8 @@ impl ECMAScriptDatamodel {
             Data::String(v) => JsValue::String(js_string!(v.clone())),
             Data::Array(v) => {
                 let js_array = JsArray::new(&mut self.context);
-                for d in v {
-                    let data = self.global_data.lock().data.get_by_id(*d).unwrap().clone();
-                    let djs = self.data_value_to_js(&data);
+                for data in v {
+                    let djs = self.data_arc_to_js(&data);
                     let _ = js_array.push(djs, &mut self.context);
                 }
                 JsValue::from(js_array)
@@ -314,7 +319,7 @@ impl ECMAScriptDatamodel {
             Data::Map(v) => {
                 let js_map = JsMap::new(&mut self.context);
                 for (key, d) in v {
-                    let djs = self.data_value_to_js(d);
+                    let djs = self.data_value_to_js(&d.lock().unwrap());
                     let _ = js_map.set(js_string!(key.clone()), djs, &mut  self.context);
                 }
                 JsValue::from(js_map)
@@ -349,12 +354,11 @@ impl ECMAScriptDatamodel {
             }
         }
         let r = if let Some(fsm) = ctx.get_data::<FsmJSWrapper>() {
-            let data = fsm.global_data.lock();
+            let data = fsm.global_data.lock().unwrap();
             let rt = if let Some(action) = data
                 .actions
                 .actions
-                .lock()
-                .unwrap()
+                .lock().unwrap()
                 .get_mut(action_name.as_str())
             {
                 action.execute(&arg_list, &data)
@@ -366,7 +370,7 @@ impl ECMAScriptDatamodel {
             Err("Failed".to_string())
         };
         match r {
-            Ok(v) => {
+            Ok(_v) => {
                 // Ok(self.data_value_to_js(&v)),
                 todo!();
             }
@@ -382,7 +386,7 @@ impl ECMAScriptDatamodel {
             let loc = fsm.state_name_to_id.get(&name.to_std_string().unwrap());
             if fsm
                 .global_data
-                .lock()
+                .lock().unwrap()
                 .configuration
                 .data
                 .contains(loc.unwrap())
@@ -416,10 +420,10 @@ impl Datamodel for ECMAScriptDatamodel {
     }
 
     fn add_functions(&mut self, fsm: &mut Fsm) {
-        let session_id = self.global_s().lock().session_id;
+        let session_id = self.global_s().lock().unwrap().session_id;
 
         let mut functions = String::new();
-        for name in self.global_s().lock().actions.lock().keys() {
+        for name in self.global_s().lock().unwrap().actions.lock().keys() {
             functions.push_str(
                 format!(
                     "function {}(){{ return __action('{}', Array.from(arguments)); }}\n",
@@ -476,7 +480,7 @@ impl Datamodel for ECMAScriptDatamodel {
         {
             // Create I/O-Processor Objects.
             let io_processors_js = JsMap::new(ctx);
-            for (name, processor) in &self.global_data.lock().io_processors {
+            for (name, processor) in &self.global_data.lock().unwrap().io_processors {
                 let processor_js = JsMap::new(ctx);
                 let location = js_string!(processor.lock().unwrap().get_location(session_id));
                 _ = processor_js.create_data_property(js_string!("location"), location, ctx);
@@ -497,10 +501,10 @@ impl Datamodel for ECMAScriptDatamodel {
         }
     }
 
-    fn set_from_state_data(&mut self, data: &HashMap<String, Data>, set_data: bool) {
+    fn set_from_state_data(&mut self, data: &HashMap<String, DataArc>, set_data: bool) {
         for (name, data) in data {
             if set_data {
-                if let Data::Source(src) = data {
+                if let Data::Source(src) = data.lock().unwrap().deref() {
                     if !src.is_empty() {
                         let rs = self.context.eval(Source::from_bytes(src.as_str()));
                         println!("set_from_state_data {} -> {:?}", src, rs);
@@ -523,7 +527,7 @@ impl Datamodel for ECMAScriptDatamodel {
                         self.set_js_property(name.as_str(), JsValue::Null);
                     };
                 } else {
-                    let ds = self.data_value_to_js(data);
+                    let ds = self.data_arc_to_js(data);
                     println!("set_from_state_data {} / {:?} -> {:?}", name, data, ds);
 
                     self.set_js_property(name.as_str(), ds);
@@ -534,14 +538,14 @@ impl Datamodel for ECMAScriptDatamodel {
         }
     }
 
-    fn initialize_read_only(&mut self, name: &str, value: Data) {
+    fn initialize_read_only_arc(&mut self, name: &str, value: DataArc) {
         let r = self.context.global_object().define_property_or_throw(
             js_string!(name),
             PropertyDescriptor::builder()
                 .configurable(true)
                 .enumerable(false)
                 .writable(false)
-                .value(self.data_value_to_js(&value)),
+                .value(self.data_arc_to_js(&value)),
             &mut self.context,
         );
         if let Err(error) = r {
@@ -549,20 +553,20 @@ impl Datamodel for ECMAScriptDatamodel {
         }
     }
 
-    fn set(&mut self, name: &str, data: Data) {
-        let v = self.data_value_to_js(&data);
+    fn set_arc(&mut self, name: &str, data: DataArc) {
+        let v = self.data_arc_to_js(&data);
         self.set_js_property(name, v);
-        self.global_data
-            .lock()
+        let _ = self.global_data
+            .lock().unwrap()
             .data
-            .set_undefined(name.to_string(), data);
+            .set_undefined_arc(name.to_string(), data);
     }
 
     fn set_event(&mut self, event: &crate::fsm::Event) {
         let data_value = match &event.param_values {
             None => match &event.content {
                 None => JsValue::Undefined,
-                Some(c) => self.data_value_to_js(c),
+                Some(c) => self.data_arc_to_js(c),
             },
             Some(pv) => {
                 let mut data = Vec::with_capacity(pv.len());
@@ -570,7 +574,7 @@ impl Datamodel for ECMAScriptDatamodel {
                 for pair in pv.iter() {
                     data.push((
                         js_string!(pair.name.clone()),
-                        self.data_value_to_js(&pair.value),
+                        self.data_arc_to_js(&pair.value),
                     ));
                 }
                 let ctx = &mut self.context;
@@ -650,7 +654,7 @@ impl Datamodel for ECMAScriptDatamodel {
         self.assign_internal(left_expr, right_expr, false)
     }
 
-    fn get_by_location(self: &mut ECMAScriptDatamodel, location: &str) -> Result<Data, String> {
+    fn get_by_location(self: &mut ECMAScriptDatamodel, location: &str) -> Result<DataArc, String> {
         match self.execute_internal(&Data::Source(location.to_string()), false) {
             Err(msg) => {
                 self.internal_error_execution();
@@ -662,7 +666,7 @@ impl Datamodel for ECMAScriptDatamodel {
 
     fn clear(self: &mut ECMAScriptDatamodel) {}
 
-    fn execute(&mut self, script: &Data) -> Result<Data, String> {
+    fn execute(&mut self, script: &Data) -> Result<DataArc, String> {
         self.execute_internal(script, true)
     }
 
@@ -736,8 +740,8 @@ impl Datamodel for ECMAScriptDatamodel {
         //   as described in Section 9.2 of [ECMASCRIPT-262].
         let to_boolean_expression = format!("({})?true:false", script.as_script());
         match self.execute_internal(&Data::Source(to_boolean_expression.clone()), false) {
-            Ok(val) => match val {
-                Data::Boolean(b) => Ok(b),
+            Ok(val) => match val.lock().unwrap().deref() {
+                Data::Boolean(b) => Ok(*b),
                 _ => Ok(false),
             },
             Err(msg) => Err(msg),

@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, mem, str, string::String};
 
-use crate::datamodel::Data;
+use crate::datamodel::{create_data_arc, Data};
 use crate::ArgOption;
 #[cfg(feature = "Debug_Reader")]
 #[cfg(not(test))]
@@ -823,7 +823,7 @@ impl ReaderState {
         };
         self.get_current_state()
             .data
-            .insert(id.to_string(), Data::Source(data_value));
+            .insert(id.to_string(), create_data_arc(Data::Source(data_value)));
     }
 
     /// A "initial" element started (the element, not the attribute)

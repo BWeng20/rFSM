@@ -1,21 +1,20 @@
 //! Defines the API used to access the data models.
 
 use std::any::Any;
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::ops::Deref;
+use std::sync::{Arc, LockResult, Mutex, MutexGuard};
 
-use crate::actions::ActionMap;
 use log::error;
 
+use crate::actions::ActionMap;
 use crate::event_io_processor::EventIOProcessor;
 use crate::expression_engine::expressions::Operator;
 use crate::expression_engine::parser::{ExpressionLexer, Token};
 use crate::fsm::{
-    vec_to_string, CommonContent, Event, ExecutableContentId, Fsm, GlobalData, InvokeId, ParamPair, Parameter, State,
-    StateId,
+    CommonContent, Event, ExecutableContentId, Fsm, GlobalData, InvokeId, Parameter, ParamPair, State, StateId,
+    vec_to_string,
 };
 
 pub const DATAMODEL_OPTION_PREFIX: &str = "datamodel:";
@@ -82,7 +81,7 @@ pub trait DatamodelFactory: Send {
 #[macro_export]
 macro_rules! get_global {
     ($x:expr) => {
-        $x.global().lock()
+        $x.global().lock().unwrap()
     };
 }
 
@@ -90,27 +89,10 @@ pub type GlobalDataLock<'a> = MutexGuard<'a, GlobalData>;
 
 /// Currently we assume that we need access to the global-data via a mutex.
 /// If not, change this type to "GlobalData" and adapt implementation.
-#[derive(Clone)]
-pub struct GlobalDataArc {
-    arc: Arc<Mutex<GlobalData>>,
-}
+pub type GlobalDataArc = Arc<Mutex<GlobalData>>;
 
-impl Default for GlobalDataArc {
-    fn default() -> Self {
-        GlobalDataArc::new()
-    }
-}
-
-impl GlobalDataArc {
-    pub fn new() -> GlobalDataArc {
-        GlobalDataArc {
-            arc: Arc::new(Mutex::new(GlobalData::new())),
-        }
-    }
-
-    pub fn lock(&self) -> GlobalDataLock {
-        self.arc.lock().unwrap()
-    }
+pub fn create_global_data_arc() -> GlobalDataArc {
+    GlobalDataArc::new(Mutex::from(crate::fsm::GlobalData::new()))
 }
 
 /// Data model interface trait.
@@ -147,7 +129,7 @@ pub trait Datamodel {
         // Set all (simple) global variables.
         self.set_from_state_data(&state_obj.data, set_data);
         if state == fsm.pseudo_root {
-            let ds = self.global().lock().environment.clone();
+            let ds = self.global().lock().unwrap().environment.clone();
             self.set_from_state_data(&ds, true);
         }
     }
@@ -155,13 +137,21 @@ pub trait Datamodel {
     /// Sets data from state data-store.\
     /// All data-elements contain script-source and needs to be evaluated by the datamodel before use.
     /// set_data - if true set the data, otherwise just initialize the variables.
-    fn set_from_state_data(&mut self, data: &HashMap<String, Data>, set_data: bool);
+    fn set_from_state_data(&mut self, data: &HashMap<String, DataArc>, set_data: bool);
 
     /// Initialize a global read-only variable.
-    fn initialize_read_only(&mut self, name: &str, value: Data);
+    fn initialize_read_only(&mut self, name: &str, value: Data) {
+       self.initialize_read_only_arc( name, create_data_arc(value));
+    }
+
+    fn initialize_read_only_arc(&mut self, name: &str, value: DataArc);
 
     /// Sets a global variable.
-    fn set(&mut self, name: &str, data: Data);
+    fn set(&mut self, name: &str, data: Data) {
+        self.set_arc( name, create_data_arc(data));
+    }
+
+    fn set_arc(&mut self, name: &str, data: DataArc);
 
     // Sets system variable "_event"
     fn set_event(&mut self, event: &Event);
@@ -174,15 +164,15 @@ pub trait Datamodel {
     /// If the location is undefined or the location expression is invalid,
     /// "error.execute" shall be put inside the internal event queue.\
     /// See [internal_error_execution](Datamodel::internal_error_execution).
-    fn get_by_location(&mut self, location: &str) -> Result<Data, String>;
+    fn get_by_location(&mut self, location: &str) -> Result<DataArc, String>;
 
     /// Convenient function to retrieve a value that has an alternative expression-value.\
     /// If value_expression is empty, Ok(value) is returned (if empty or not). If the expression
     /// results in error Err(message) and "error.execute" is put in internal queue.
     /// See [internal_error_execution](Datamodel::internal_error_execution).
-    fn get_expression_alternative_value(&mut self, value: &Data, value_expression: &Data) -> Result<Data, String> {
+    fn get_expression_alternative_value(&mut self, value: &Data, value_expression: &Data) -> Result<DataArc, String> {
         if value_expression.is_empty() {
-            Ok(value.clone())
+            Ok(create_data_arc(value.clone()))
         } else {
             match self.execute(value_expression) {
                 Err(_msg) => {
@@ -196,7 +186,12 @@ pub trait Datamodel {
 
     /// Get an _ioprocessor by name.
     fn get_io_processor(&mut self, name: &str) -> Option<Arc<Mutex<Box<dyn EventIOProcessor>>>> {
-        self.global().lock().io_processors.get(name).cloned()
+        self.global()
+            .lock()
+            .unwrap()
+            .io_processors
+            .get(name)
+            .cloned()
     }
 
     /// Send an event via io-processor.
@@ -223,7 +218,7 @@ pub trait Datamodel {
     /// If the script execution fails, "error.execute" shall be put
     /// inside the internal event queue.
     /// See [internal_error_execution](Datamodel::internal_error_execution).
-    fn execute(&mut self, script: &Data) -> Result<Data, String>;
+    fn execute(&mut self, script: &Data) -> Result<DataArc, String>;
 
     /// Executes a for-each loop
     fn execute_for_each(
@@ -277,14 +272,14 @@ pub trait Datamodel {
 
     /// Evaluates a content element.\
     /// Returns the static content or executes the expression.
-    fn evaluate_content(&mut self, content: &Option<CommonContent>) -> Option<Data> {
+    fn evaluate_content(&mut self, content: &Option<CommonContent>) -> Option<DataArc> {
         match content {
             None => None,
             Some(ct) => {
                 match &ct.content_expr {
                     None => match &ct.content {
                         None => None,
-                        Some(ct_content) => Some(Data::Source(ct_content.clone())),
+                        Some(ct_content) => Some(create_data_arc(Data::Source(ct_content.clone()))),
                     },
                     Some(expr) => {
                         match self.execute(&Data::Source(expr.clone())) {
@@ -338,7 +333,7 @@ pub trait Datamodel {
                                 self.internal_error_execution();
                             }
                             Ok(value) => {
-                                values.push(ParamPair::new_moved(param.name.clone(), value));
+                                values.push(ParamPair::new_moved(param.name.clone(), value.clone()));
                             }
                         }
                     }
@@ -425,15 +420,15 @@ impl Datamodel for NullDatamodel {
         // nothing to do
     }
 
-    fn set_from_state_data(&mut self, _data: &HashMap<String, Data>, _set_data: bool) {
+    fn set_from_state_data(&mut self, _data: &HashMap<String, DataArc>, _set_data: bool) {
         // nothing to do
     }
 
-    fn initialize_read_only(&mut self, _name: &str, _value: Data) {
+    fn initialize_read_only_arc(&mut self, _name: &str, _value: DataArc) {
         // nothing to do
     }
 
-    fn set(&mut self, _name: &str, _data: Data) {
+    fn set_arc(&mut self, _name: &str, _data: DataArc) {
         // nothing to do
     }
 
@@ -446,7 +441,7 @@ impl Datamodel for NullDatamodel {
         true
     }
 
-    fn get_by_location(&mut self, _name: &str) -> Result<Data, String> {
+    fn get_by_location(&mut self, _name: &str) -> Result<DataArc, String> {
         Err("unimplemented".to_string())
     }
 
@@ -456,7 +451,7 @@ impl Datamodel for NullDatamodel {
         println!("{}", msg);
     }
 
-    fn execute(&mut self, _script: &Data) -> Result<Data, String> {
+    fn execute(&mut self, _script: &Data) -> Result<DataArc, String> {
         Err("unimplemented".to_string())
     }
 
@@ -485,7 +480,13 @@ impl Datamodel for NullDatamodel {
                     } else {
                         return match self.state_name_to_id.get(&state_name) {
                             None => Err(format!("Illegal state name '{}'", state_name)),
-                            Some(state_id) => Ok(self.global.lock().configuration.data.contains(state_id)),
+                            Some(state_id) => Ok(self
+                                .global
+                                .lock()
+                                .unwrap()
+                                .configuration
+                                .data
+                                .contains(state_id)),
                         };
                     }
                 }
@@ -519,14 +520,14 @@ impl<T: Debug + 'static> ToAny for T {
 
 /// Data Variant used to handle data type-safe but
 /// Datamodel-agnostic way.
-#[derive(Clone, PartialEq)]
+#[derive(Clone)]
 pub enum Data {
     Integer(i64),
     Double(f64),
     String(String),
     Boolean(bool),
-    Array(Vec<DataId>),
-    Map(HashMap<String, Data>),
+    Array(Vec<DataArc>),
+    Map(HashMap<String, DataArc>),
     Null(),
     /// Special placeholder to indicate an error
     Error(String),
@@ -534,6 +535,49 @@ pub enum Data {
     Source(String),
     /// Special placeholder to indicate an empty content.
     None(),
+}
+
+impl PartialEq for Data {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Data::Integer(a), Data::Integer(b)) => a == b,
+            (Data::Double(a), Data::Double(b)) => a == b,
+            (Data::String(a), Data::String(b)) => a == b,
+            (Data::Boolean(a), Data::Boolean(b)) => a == b,
+            (Data::Array(a), Data::Array(b)) => {
+                if a.len() != b.len() {
+                    return false;
+                }
+                for index in 0..a.len() {
+                    if !(Arc::ptr_eq( &a[index].arc, &b[index].arc) ||
+                        *a[index].lock().unwrap() == *b[index].lock().unwrap()) {
+                        return false;
+                    }
+                }
+                true
+            }
+            (Data::Map(a), Data::Map(b)) => {
+                if a.len() != b.len() {
+                    return false;
+                }
+                for (key, value) in a {
+                    if let Some(other_value) = b.get(key) {
+                        if *value.lock().unwrap() != *other_value.lock().unwrap() {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                }
+                true
+            }
+            (Data::Null(), Data::Null()) => true,
+            (Data::Error(a), Data::Error(b)) => a == b,
+            (Data::Source(a), Data::Source(b)) => a == b,
+            (Data::None(), Data::None()) => true,
+            _ => false,
+        }
+    }
 }
 
 impl Display for Data {
@@ -569,7 +613,7 @@ impl Display for Data {
                     // TODO: Escape
                     b.push_str(key);
                     b.push_str("':");
-                    b.push_str(data.to_string().as_str())
+                    b.push_str(data.lock().unwrap().to_string().as_str())
                 }
                 b.push('}');
                 write!(f, "{}", b)
@@ -736,7 +780,7 @@ impl Data {
                 | Operator::Divide => Data::Error("Operation not possible for arrays".to_string()),
                 Operator::Plus => {
                     if let Data::Array(right_content) = right {
-                        let mut sum: Vec<DataId> = Vec::with_capacity(self_content.len() + right_content.len());
+                        let mut sum: Vec<DataArc> = Vec::with_capacity(self_content.len() + right_content.len());
                         sum.extend(self_content.clone());
                         sum.extend(right_content.clone());
                         Data::Array(sum)
@@ -762,7 +806,7 @@ impl Data {
                 | Operator::Divide => Data::Error("Operation not possible for maps".to_string()),
                 Operator::Plus => {
                     if let Data::Map(right_content) = right {
-                        let mut sum: HashMap<String, Data> =
+                        let mut sum: HashMap<String, DataArc> =
                             HashMap::with_capacity(self_content.len() + right_content.len());
                         for (key, data) in self_content {
                             sum.insert(key.clone(), data.clone());
@@ -808,7 +852,7 @@ impl Data {
         match self {
             Data::Integer(v) => *v as f64,
             Data::Double(v) => *v,
-            Data::String(s) => s.parse::<f64>().unwrap_or( 0f64),
+            Data::String(s) => s.parse::<f64>().unwrap_or(0f64),
             Data::Boolean(b) => {
                 if *b {
                     1f64
@@ -889,12 +933,55 @@ impl Default for Data {
     }
 }
 
-pub use u16 as DataId;
+#[derive(Debug,Clone)]
+pub struct DataArc {
+    pub arc : Arc<Mutex<Data>>
+}
+
+impl DataArc {
+    pub fn lock(&self) -> LockResult<MutexGuard<'_,Data>> {
+        self.arc.lock()
+    }
+}
+
+impl PartialEq for DataArc {
+
+    fn eq(&self, other: &Self) -> bool {
+        if Arc::ptr_eq(&self.arc, &other.arc)
+        {
+            true
+        } else if self.arc.lock().unwrap().eq( other.lock().unwrap().deref() ) {
+            true
+        } else {
+            false
+        }
+    }
+
+}
+
+
+impl Display for DataArc {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self.arc.lock() {
+            Ok(val) => {
+                write!(f, "{}", *val )
+            }
+            Err(_) => {
+                write!(f, "none" )
+            }
+        }
+    }
+}
+
+pub fn create_data_arc( data : Data ) -> DataArc {
+    DataArc{
+        arc : Arc::new(Mutex::from(data))
+    }
+}
 
 #[derive(Debug)]
 pub struct DataStore {
-    pub map: HashMap<String, DataId>,
-    pub values: HashMap<DataId, Data>,
+    pub map: HashMap<String, DataArc>,
 }
 
 impl Default for DataStore {
@@ -907,53 +994,29 @@ impl DataStore {
     pub fn new() -> DataStore {
         DataStore {
             map: HashMap::new(),
-            values: HashMap::new(),
         }
     }
 
-    pub fn get_by_id(&self, id: DataId) -> Option<&Data> {
-        self.values.get(&id)
-    }
-
-    pub fn get_by_id_mut(&mut self, id: DataId) -> Option<&mut Data> {
-        self.values.get_mut(&id)
-    }
-
-    pub fn set_by_id(&mut self, id: DataId, data: Data) {
-        self.values.insert(id, data);
-    }
-
-    pub fn get(&self, key: &str) -> Option<&Data> {
-        let id = self.map.get(key)?;
-        self.values.get(id)
-    }
-
-    pub fn get_id(&self, key: &str) -> Option<DataId> {
-        Some( *self.map.get(key)? )
-    }
-
-
-    pub fn get_mut(&mut self, key: &str) -> Option<&mut Data> {
-        let id = self.map.get(key)?;
-        self.values.get_mut(id)
+    pub fn get(&self, key: &str) -> Option<DataArc> {
+        self.map.get(key).cloned()
     }
 
     pub fn set(&mut self, key: String, data: Data) -> bool {
         // W3C want to assign only to defined variables.
-        match self.map.get(&key) {
-            Some(id) => {
-                self.values.insert(*id, data);
-                true
-            }
-            None => false,
+        // TODO: Optimize this (with one "Get")
+        if self.map.contains_key(&key) {
+            self.map.insert(key, create_data_arc(data));
+            true
+        } else {
+            false
         }
     }
 
     pub fn set_undefined(&mut self, key: String, data: Data) {
-        let id = ID_COUNT.fetch_add(1, Ordering::Relaxed) as DataId;
-        self.map.insert(key, id);
-        self.values.insert(id, data);
+        self.set_undefined_arc(key, create_data_arc(data));
+    }
+
+    pub fn set_undefined_arc(&mut self, key: String, data: DataArc) {
+        self.map.insert(key, data);
     }
 }
-
-static ID_COUNT: AtomicU32 = AtomicU32::new(1);

@@ -276,7 +276,7 @@ pub fn run_test_manual_with_send(
                 error!("FSM Session lost");
                 false
             }
-            Some(session) => match &session.global_data.lock().final_configuration {
+            Some(session) => match &session.global_data.lock().unwrap().final_configuration {
                 None => {
                     error!("Final Configuration not available");
                     false
