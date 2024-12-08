@@ -6,6 +6,9 @@
 /test/w3c/manual_scxml/
 /test/w3c/scxml/
 /test/w3c/logs/
+/test/w3c/manual_rfsm_expr/
+/test/w3c/rfsm_expr/
+/test/w3c/rfsm_expression_logs/
 /test/w3c/dependencies/
 /test/w3c/rfsm/
 /test/w3c/rfsm_logs/
