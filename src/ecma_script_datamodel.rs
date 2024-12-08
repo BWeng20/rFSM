@@ -558,14 +558,22 @@ impl Datamodel for ECMAScriptDatamodel {
         }
     }
 
-    fn set_arc(&mut self, name: &str, data: DataArc) {
+    fn set_arc(&mut self, name: &str, data: DataArc, allow_undefined: bool) {
         let v = self.data_arc_to_js(&data);
         self.set_js_property(name, v);
-        self.global_data
-            .lock()
-            .unwrap()
-            .data
-            .set_undefined_arc(name.to_string(), data);
+        if allow_undefined {
+            self.global_data
+                .lock()
+                .unwrap()
+                .data
+                .set_undefined_arc(name.to_string(), data);
+        } else {
+            self.global_data
+                .lock()
+                .unwrap()
+                .data
+                .set_arc(name.to_string(), data);
+        }
     }
 
     fn set_event(&mut self, event: &crate::fsm::Event) {

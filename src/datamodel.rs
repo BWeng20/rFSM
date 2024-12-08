@@ -147,11 +147,11 @@ pub trait Datamodel {
     fn initialize_read_only_arc(&mut self, name: &str, value: DataArc);
 
     /// Sets a global variable.
-    fn set(&mut self, name: &str, data: Data) {
-        self.set_arc(name, create_data_arc(data));
+    fn set(&mut self, name: &str, data: Data, allow_undefined: bool) {
+        self.set_arc(name, create_data_arc(data), allow_undefined);
     }
 
-    fn set_arc(&mut self, name: &str, data: DataArc);
+    fn set_arc(&mut self, name: &str, data: DataArc, allow_undefined: bool);
 
     // Sets system variable "_event"
     fn set_event(&mut self, event: &Event);
@@ -179,7 +179,7 @@ pub trait Datamodel {
                     // Error -> Abort
                     Err("execution failed".to_string())
                 }
-                Ok(value) => Ok(value),
+                Ok(result) => Ok(result),
             }
         }
     }
@@ -428,7 +428,7 @@ impl Datamodel for NullDatamodel {
         // nothing to do
     }
 
-    fn set_arc(&mut self, _name: &str, _data: DataArc) {
+    fn set_arc(&mut self, _name: &str, _data: DataArc, _allow_undefined: bool) {
         // nothing to do
     }
 
@@ -990,14 +990,20 @@ impl DataStore {
     }
 
     pub fn set(&mut self, key: String, data: Data) -> bool {
+        self.set_arc(key, create_data_arc(data))
+    }
+
+    pub fn set_arc(&mut self, key: String, data: DataArc) -> bool {
         // W3C want to assign only to defined variables.
         if let std::collections::hash_map::Entry::Occupied(mut e) = self.map.entry(key) {
-            e.insert(create_data_arc(data));
+            e.insert(data);
             true
         } else {
             false
         }
+
     }
+
 
     pub fn set_undefined(&mut self, key: String, data: Data) {
         self.set_undefined_arc(key, create_data_arc(data));

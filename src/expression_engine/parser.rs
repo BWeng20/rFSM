@@ -84,7 +84,7 @@ impl ExpressionLexer {
             '\0' | '.' | '!' | ',' | '\\' | ';' |
             // Operators
             '-' | '+' | '/' | ':' | '*' |
-            '<' | '>' | '=' | '%' |
+            '<' | '>' | '=' | '%' | '?' |
             // Brackets
             '[' | ']' | '(' | ')' | '{' | '}' |
             // String
@@ -378,7 +378,7 @@ impl ExpressionLexer {
                             '\0' => {
                                 return Token::EOE;
                             }
-                            '+' | '-' | '*' | '<' | '>' | '=' | '%' | '/' | ':' | '!' => {
+                            '?' |'+' | '-' | '*' | '<' | '>' | '=' | '%' | '/' | ':' | '!' => {
                                 return self.read_operator(c);
                             }
                             '{' | '}' | '(' | ')' | '[' | ']' => {
@@ -611,6 +611,8 @@ impl ExpressionParser {
     where
         F: Fn(Box<dyn Expression>, Box<dyn Expression>) -> Result<Box<dyn Expression>, String>,
     {
+        println!("fold_stack before: {:?}", vec_to_string(stack));
+
         if idx > 0 && (idx + 1) < stack.len() {
             let right = stack.remove(idx + 1);
             stack.remove(idx);
@@ -621,6 +623,7 @@ impl ExpressionParser {
                     match f(le, re) {
                         Ok(expression) => {
                             stack.insert(idx - 1, ExpressionParserItem::SExpression(expression));
+                            println!("fold_stack after: {:?}", vec_to_string(stack));
                             return true;
                         }
                         Err(_err) => return false,

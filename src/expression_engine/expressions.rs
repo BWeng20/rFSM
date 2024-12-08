@@ -1,6 +1,6 @@
 //! Implementation of a simple expression parser.
 
-use std::fmt::Debug;
+use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Deref, DerefMut};
 
 use crate::datamodel::{create_data_arc, Data, DataArc, GlobalDataLock, ToAny};
@@ -11,6 +11,20 @@ pub enum ExpressionResult {
     Error(String),
     Value(DataArc),
 }
+
+impl Display for ExpressionResult {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error(err) => {
+                write!(f, "Error:{}", err)
+            }
+            Value(value) => {
+                write!(f, "{}", value)
+            }
+        }
+    }
+}
+
 
 impl PartialEq for ExpressionResult {
     fn eq(&self, other: &Self) -> bool {
@@ -35,6 +49,7 @@ impl PartialEq for ExpressionResult {
 
 pub trait Expression: ToAny + Debug {
     fn execute(&self, context: &mut GlobalDataLock, allow_undefined: bool) -> ExpressionResult;
+    fn is_assignable(&self) -> bool;
 }
 
 pub fn get_expression_as<T: 'static>(ec: &dyn Expression) -> Option<&T> {
@@ -67,6 +82,10 @@ impl Expression for ExpressionArray {
             }
         }
         Value(create_data_arc(Data::Array(v)))
+    }
+
+    fn is_assignable(&self) -> bool {
+        false
     }
 }
 
@@ -101,6 +120,10 @@ impl Expression for ExpressionMethod {
         todo!()
         // context.execute_action(&self.method, v.as_slice())
     }
+
+    fn is_assignable(&self) -> bool {
+        false
+    }
 }
 
 #[derive(Debug)]
@@ -117,6 +140,10 @@ impl ExpressionConstant {
 impl Expression for ExpressionConstant {
     fn execute(&self, _context: &mut GlobalDataLock, _allow_undefined: bool) -> ExpressionResult {
         Value(create_data_arc(self.data.clone()))
+    }
+
+    fn is_assignable(&self) -> bool {
+        false
     }
 }
 
@@ -146,6 +173,10 @@ impl Expression for ExpressionVariable {
                 }
             }
         }
+    }
+
+    fn is_assignable(&self) -> bool {
+        true
     }
 }
 
@@ -192,7 +223,7 @@ impl Expression for ExpressionMemberAccess {
                 | Data::Array(_)
                 | Data::Source(_)
                 | Data::Null()
-                | Data::None() => Error("Can't assign to value".to_string()),
+                | Data::None() => Error("Value has no members".to_string()),
                 Data::Map(m) => match m.get(&self.member_name) {
                     None => {
                         if allow_undefined {
@@ -207,6 +238,10 @@ impl Expression for ExpressionMemberAccess {
                 Data::Error(err) => Error(err.clone()),
             },
         }
+    }
+
+    fn is_assignable(&self) -> bool {
+        true
     }
 }
 
@@ -224,19 +259,29 @@ impl ExpressionAssign {
 
 impl Expression for ExpressionAssign {
     fn execute(&self, context: &mut GlobalDataLock, allow_undefined: bool) -> ExpressionResult {
-        let right_result = self.right.execute(context, allow_undefined);
-        let left_result = self.left.execute(context, allow_undefined);
-        println!("Assign {:?} <- {:?}", left_result, right_result);
-        match left_result {
-            Error(err) => Error(err),
-            Value(v) => match right_result {
+        if self.left.is_assignable() {
+            let right_result = self.right.execute(context, allow_undefined);
+            let left_result = self.left.execute(context, false);
+            println!("Assign {} <- {}", left_result, right_result);
+            match left_result {
                 Error(err) => Error(err),
-                Value(vr) => {
-                    *(v.lock().unwrap().deref_mut()) = vr.lock().unwrap().deref().clone();
-                    Value(v.clone())
-                }
-            },
+                Value(v) => {
+                    match right_result {
+                        Error(err) => Error(err),
+                        Value(vr) => {
+                            *(v.lock().unwrap().deref_mut()) = vr.lock().unwrap().deref().clone();
+                            Value(v.clone())
+                        }
+                    }
+                },
+            }
+        } else {
+            Error("Can't assign to that".to_string())
         }
+    }
+
+    fn is_assignable(&self) -> bool {
+        false
     }
 }
 
@@ -254,24 +299,32 @@ impl ExpressionAssignUndefined {
 
 impl Expression for ExpressionAssignUndefined {
     fn execute(&self, context: &mut GlobalDataLock, allow_undefined: bool) -> ExpressionResult {
-        let right_result = match self.right.execute(context, allow_undefined) {
-            Error(err) => {
-                return Error(err);
+        if self.left.is_assignable() {
+            let right_result = match self.right.execute(context, allow_undefined) {
+                Error(err) => {
+                    return Error(err);
+                }
+                Value(val) => val,
+            };
+            let left_result = self.left.execute(context, true);
+            match left_result {
+                Error(err) => Error(err),
+                Value(left_value) => {
+                    right_result
+                        .lock()
+                        .unwrap()
+                        .deref()
+                        .clone_into(left_value.lock().unwrap().deref_mut());
+                    Value(left_value.clone())
+                }
             }
-            Value(val) => val,
-        };
-        let left_result = self.left.execute(context, true);
-        match left_result {
-            Error(err) => Error(err),
-            Value(left_value) => {
-                right_result
-                    .lock()
-                    .unwrap()
-                    .deref()
-                    .clone_into(left_value.lock().unwrap().deref_mut());
-                Value(left_value.clone())
-            }
+        } else {
+            Error(format!("Can't assign to {:?}", self.left ))
         }
+    }
+
+    fn is_assignable(&self) -> bool {
+        false
     }
 }
 
@@ -307,7 +360,7 @@ impl Expression for ExpressionOperator {
             Value(val) => val.clone(),
         };
         println!(
-            "execute {:?} {:?}  {:?}",
+            "execute {} {:?}  {}",
             left_result, self.operator, right_result
         );
         let result_data = left_result
@@ -315,6 +368,10 @@ impl Expression for ExpressionOperator {
             .unwrap()
             .operation(self.operator.clone(), right_result.lock().unwrap().deref());
         ExpressionResult::Value(create_data_arc(result_data))
+    }
+
+    fn is_assignable(&self) -> bool {
+        false
     }
 }
 

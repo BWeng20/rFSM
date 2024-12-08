@@ -32,13 +32,21 @@ impl RFsmExpressionDatamodel {
         }
     }
 
-    fn set_arc(&mut self, name: &str, data: DataArc) {
-        println!("set {} = {}", name, data.lock().unwrap());
-        self.global_data
+    fn set_arc(&mut self, name: &str, data: DataArc, allow_undefined : bool) {
+        println!("set {} = {}", name, data);
+        if allow_undefined {
+            self.global_data
+                .lock()
+                .unwrap()
+                .data
+                .set_undefined_arc(name.to_string(), data);
+        } else {
+            self.global_data
             .lock()
             .unwrap()
             .data
-            .set_undefined_arc(name.to_string(), data);
+            .set_arc(name.to_string(), data);
+        }
     }
 
     fn assign_internal(&mut self, left_expr: &str, right_expr: &str, allow_undefined: bool) -> bool {
@@ -60,12 +68,11 @@ impl RFsmExpressionDatamodel {
                 // in the internal event queue.
                 self.log(
                     format!(
-                        "Could not assign {}={}, '{}'.",
+                        "Can not assign {}={}: '{}'.",
                         left_expr, right_expr, error
                     )
                     .as_str(),
                 );
-
                 self.internal_error_execution();
                 false
             }
@@ -162,10 +169,10 @@ impl Datamodel for RFsmExpressionDatamodel {
                             }
                         }
                     } else {
-                        self.set(name, Data::Null());
+                        self.set(name, Data::Null(), true);
                     }
                 } else {
-                    self.set_arc(name, value.clone());
+                    self.set_arc(name, value.clone(), true);
                 }
             }
         }
@@ -173,11 +180,11 @@ impl Datamodel for RFsmExpressionDatamodel {
 
     fn initialize_read_only_arc(&mut self, name: &str, value: DataArc) {
         // TODO
-        self.set_arc(name, value);
+        self.set_arc(name, value, true);
     }
 
-    fn set_arc(&mut self, name: &str, data: DataArc) {
-        self.set_arc(name, data);
+    fn set_arc(&mut self, name: &str, data: DataArc, allow_undefined: bool) {
+        self.set_arc(name, data, allow_undefined );
     }
 
     fn set_event(&mut self, event: &Event) {
@@ -247,18 +254,21 @@ impl Datamodel for RFsmExpressionDatamodel {
 
     fn execute(&mut self, script: &Data) -> Result<DataArc, String> {
         match self.execute_internal(script, true) {
-            Ok(r) => match r.lock().unwrap().deref() {
-                Data::Double(_)
-                | Data::Source(_)
-                | Data::String(_)
-                | Data::Boolean(_)
-                | Data::Null()
-                | Data::None()
-                | Data::Integer(_) => Ok(r.clone()),
-                Data::Array(_) => Err("Illegal Result: Can't return array".to_string()),
-                Data::Map(_) => Err("Illegal Result: Can't return maps".to_string()),
-                Data::Error(err) => Err(err.clone()),
-            },
+            Ok(r) => {
+                match r.lock().unwrap().deref() {
+                    Data::Double(_)
+                    | Data::Source(_)
+                    | Data::String(_)
+                    | Data::Boolean(_)
+                    | Data::Null()
+                    | Data::None()
+                    | Data::Integer(_) => (),
+                    Data::Array(_) => return Err("Illegal Result: Can't return array".to_string()),
+                    Data::Map(_) => return Err("Illegal Result: Can't return maps".to_string()),
+                    Data::Error(err) => return Err(err.clone()),
+                }
+                return Ok(r);
+            }
             Err(err) => Err(err),
         }
     }
@@ -284,10 +294,10 @@ impl Datamodel for RFsmExpressionDatamodel {
                         if self.assign_internal(item_name, "null", true) {
                             for (name, item_value) in map {
                                 #[cfg(feature = "Debug")]
-                                debug!("ForEach: #{} {} {}={:?}", idx, name, item_name, item_value);
-                                self.set_arc(item_name, item_value.clone());
+                                debug!("ForEach: #{} {} {}={}", idx, name, item_name, item_value);
+                                self.set_arc(item_name, item_value.clone(), true);
                                 if !index.is_empty() {
-                                    self.set(index, Data::Integer(idx));
+                                    self.set(index, Data::Integer(idx), true);
                                 }
                                 if !execute_body(self) {
                                     return false;
@@ -302,9 +312,9 @@ impl Datamodel for RFsmExpressionDatamodel {
                             for data in array {
                                 #[cfg(feature = "Debug")]
                                 debug!("ForEach: #{} {:?}", idx, data);
-                                self.set_arc(item_name, data.clone());
+                                self.set_arc(item_name, data.clone(), true);
                                 if !index.is_empty() {
-                                    self.set(index, Data::Integer(idx));
+                                    self.set(index, Data::Integer(idx), true);
                                 }
                                 if !execute_body(self) {
                                     return false;

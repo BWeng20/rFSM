@@ -3088,7 +3088,7 @@ impl Fsm {
             // If "idlocation" is specified, we have to store the generated id to this location
             datamodel.set(
                 inv.external_id_location.as_str(),
-                Data::String(invokeId.clone()),
+                Data::String(invokeId.clone()), true
             );
         }
 
