@@ -19,7 +19,7 @@ name = "rfsm"
 path = "src/lib.rs"
 
 [features]
-default = [ "EnvLog", "ECMAScript", "yaml-config", "json-config", "xml", "serializer" ]
+default = [ "EnvLog", "ECMAScript", "yaml-config", "json-config", "xml", "serializer", "Trace", "TraceServer" ]
 ECMAScript = ["boa_engine", "boa_gc"]
 BasicHttpEventIOProcessor = ["hyper", "http-body-util", "hyper-util", "form_urlencoded"]
 yaml-config = ["yaml-rust"]
@@ -29,6 +29,9 @@ xml = ["quick-xml", "reqwest"]
 
 # "Trace" enables the trace module, uses by the other trace features
 Trace = []
+
+# "TraceServer" enables the remote trace-server
+TraceServer = ["Trace"]
 
 # Enables debug output from scxml-reader
 Debug_Reader = []
