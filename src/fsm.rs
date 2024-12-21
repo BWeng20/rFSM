@@ -33,11 +33,7 @@ use crate::actions::{Action, ActionWrapper};
 use log::debug;
 use timer::Guard;
 
-use crate::datamodel::{
-    Data, DataArc, DataStore, Datamodel, DatamodelFactory, GlobalDataArc, NullDatamodelFactory, NULL_DATAMODEL,
-    NULL_DATAMODEL_LC, SCXML_INVOKE_TYPE, SCXML_INVOKE_TYPE_SHORT, SESSION_ID_VARIABLE_NAME,
-    SESSION_NAME_VARIABLE_NAME,
-};
+use crate::datamodel::{Data, DataArc, DataStore, Datamodel, DatamodelFactory, GlobalDataArc, NullDatamodelFactory, NULL_DATAMODEL, NULL_DATAMODEL_LC, SCXML_INVOKE_TYPE, SCXML_INVOKE_TYPE_SHORT, SESSION_ID_VARIABLE_NAME, SESSION_NAME_VARIABLE_NAME, create_data_arc};
 #[cfg(feature = "ECMAScript")]
 use crate::ecma_script_datamodel::ECMAScriptDatamodelFactory;
 #[cfg(feature = "ECMAScript")]
@@ -160,7 +156,7 @@ pub fn start_fsm_with_data_and_finish_mode(
                         let root_state = sm.get_state_by_id_mut(sm.pseudo_root);
                         for val in data_copy {
                             if root_state.data.get_mut(&val.name).is_some() {
-                                root_state.data.insert(val.name, val.value);
+                                root_state.data.insert(val.name, create_data_arc(val.value.clone()));
                             }
                         }
                     }
@@ -662,14 +658,14 @@ impl EventType {
 #[derive(Debug, Clone)]
 pub struct ParamPair {
     pub name: String,
-    pub value: DataArc,
+    pub value: Data,
 }
 
 impl ParamPair {
-    pub fn new_moved(name: String, value: DataArc) -> ParamPair {
+    pub fn new_moved(name: String, value: Data) -> ParamPair {
         ParamPair { name, value }
     }
-    pub fn new(name: &str, value: &DataArc) -> ParamPair {
+    pub fn new(name: &str, value: &Data) -> ParamPair {
         ParamPair {
             name: name.to_string(),
             value: value.clone(),
@@ -1376,6 +1372,7 @@ impl Fsm {
             }
 
             datamodel.add_functions(self);
+            datamodel.set_ioprocessors();
 
             self.initialize_data_models_recursive(
                 datamodel,
@@ -3071,7 +3068,7 @@ impl Fsm {
                     return;
                 }
                 Ok(value) => {
-                    name_values.push(ParamPair::new(name.as_str(), &value));
+                    name_values.push(ParamPair::new(name.as_str(), &value.lock().unwrap().clone()));
                 }
             }
         }

@@ -163,7 +163,10 @@ impl ExpressionVariable {
 impl Expression for ExpressionVariable {
     fn execute(&self, context: &mut GlobalDataLock, allow_undefined: bool) -> ExpressionResult {
         match context.data.get(&self.name) {
-            Some(value) => ExpressionResult::Value(value.clone()),
+            Some(value) => {
+                println!("ExpressionVariable {}", value);
+                ExpressionResult::Value(value.clone())
+            },
             None => {
                 if allow_undefined {
                     context.data.set_undefined(self.name.clone(), Data::None());
@@ -260,17 +263,38 @@ impl ExpressionAssign {
 impl Expression for ExpressionAssign {
     fn execute(&self, context: &mut GlobalDataLock, allow_undefined: bool) -> ExpressionResult {
         if self.left.is_assignable() {
-            let right_result = self.right.execute(context, allow_undefined);
-            let left_result = self.left.execute(context, false);
-            println!("Assign {} <- {}", left_result, right_result);
+            let right_result = self.right.execute(context, false);
+            let left_result = self.left.execute(context, allow_undefined);
+            println!("----  Assign {} <- {}", left_result, right_result);
+
             match left_result {
                 Error(err) => Error(err),
                 Value(v) => {
                     match right_result {
                         Error(err) => Error(err),
-                        Value(vr) => {
-                            *(v.lock().unwrap().deref_mut()) = vr.lock().unwrap().deref().clone();
-                            Value(v.clone())
+                        Value(right_arc) => {
+                            let right_guard = right_arc.lock().unwrap();
+                            match right_guard.deref() {
+                                Data::Integer(_) |
+                                Data::Double(_) |
+                                Data::String(_) |
+                                Data::Boolean(_) |
+                                Data::Array(_) |
+                                Data::Map(_) |
+                                Data::Null() |
+                                Data::Source(_) => {
+                                    if v.is_readonly() {
+                                        Error(format!("Can set read-only {v}"))
+                                    } else {
+                                        right_guard.deref().clone_into(v.lock().unwrap().deref_mut() );
+                                        return Value(v.clone())
+                                    }
+                                }
+                                Data::Error(_) |
+                                Data::None() => {
+                                    Error(format!("Can't assign from {v}"))
+                                }
+                            }
                         }
                     }
                 },
@@ -347,12 +371,14 @@ impl ExpressionOperator {
 
 impl Expression for ExpressionOperator {
     fn execute(&self, context: &mut GlobalDataLock, allow_undefined: bool) -> ExpressionResult {
+        context.data.dump();
         let left_result = match self.left.execute(context, allow_undefined) {
             Error(err) => {
                 return Error(err);
             }
             Value(val) => val.clone(),
         };
+        println!( "{:?} -> left {}",self.left, left_result );
         let right_result = match self.right.execute(context, allow_undefined) {
             Error(err) => {
                 return Error(err);

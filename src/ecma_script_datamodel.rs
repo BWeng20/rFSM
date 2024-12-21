@@ -424,7 +424,6 @@ impl Datamodel for ECMAScriptDatamodel {
     }
 
     fn add_functions(&mut self, fsm: &mut Fsm) {
-        let session_id = self.global_s().lock().unwrap().session_id;
 
         let mut functions = String::new();
         for name in self.global_s().lock().unwrap().actions.lock().keys() {
@@ -479,9 +478,14 @@ impl Datamodel for ECMAScriptDatamodel {
             1,
             NativeFunction::from_copy_closure(Self::log_js),
         );
+    }
 
-        // set system variable "_ioprocessors"
+    /// set system variable "_ioprocessors"
+    fn set_ioprocessors(&mut self) {
         {
+            let session_id = self.global_s().lock().unwrap().session_id;
+            let ctx = &mut self.context;
+
             // Create I/O-Processor Objects.
             let io_processors_js = JsMap::new(ctx);
             for (name, processor) in &self.global_data.lock().unwrap().io_processors {
@@ -588,7 +592,7 @@ impl Datamodel for ECMAScriptDatamodel {
                 for pair in pv.iter() {
                     data.push((
                         js_string!(pair.name.clone()),
-                        self.data_arc_to_js(&pair.value),
+                        self.data_arc_to_js(&create_data_arc(pair.value.clone())),
                     ));
                 }
                 let ctx = &mut self.context;

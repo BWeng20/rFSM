@@ -423,6 +423,8 @@ impl ExecutableContent for ForEach {
         } else {
             self.index.clone()
         };
+        println!("(1)");
+        datamodel.global().lock().unwrap().data.dump();
         datamodel.execute_for_each(&self.array, &self.item, &idx, &mut |datamodel| -> bool {
             if self.content != 0 {
                 for e in fsm.executableContent.get(&self.content).unwrap() {
@@ -571,7 +573,7 @@ impl ExecutableContent for SendParameters {
                         return false;
                     }
                     Ok(value) => {
-                        data_vec.push(ParamPair::new(name.as_str(), &value));
+                        data_vec.push(ParamPair::new(name.as_str(), &value.lock().unwrap()));
                     }
                 }
             }

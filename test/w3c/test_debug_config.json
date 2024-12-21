@@ -1,0 +1,11 @@
+{
+  "file": null,
+  "final_configuration": [
+    "pass"
+  ],
+  "events": [],
+  "timeout_milliseconds": 5000000,
+  "options": {
+    "datamodel:ecma:strict": ""
+  }
+}

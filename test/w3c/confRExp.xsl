@@ -493,9 +493,7 @@
         <xsl:attribute name="cond">
             <xsl:analyze-string select="."
                                 regex="(\w+)(\W)(\w+)">
-                <xsl:matching-substring>
-                    starts_with(Var<xsl:value-of select="regex-group(1)"/>, Var<xsl:value-of select="regex-group(3)"/><xsl:text>)</xsl:text>
-                </xsl:matching-substring>
+                <xsl:matching-substring>Var<xsl:value-of select="regex-group(1)"/>.starts_with(Var<xsl:value-of select="regex-group(3)"/><xsl:text>)</xsl:text></xsl:matching-substring>
             </xsl:analyze-string>
         </xsl:attribute>
     </xsl:template>
@@ -618,8 +616,10 @@
     is of the same type as array123 -->
     <xsl:template match="conf:extendArray">
         <assign xmlns="http://www.w3.org/2005/07/scxml">
-            <xsl:attribute name="location">Var<xsl:value-of select="@id"/></xsl:attribute>
-            <xsl:attribute name="expr">(Var<xsl:value-of select="@id"/> + [4])</xsl:attribute>
+            <xsl:attribute name="location">Var<xsl:value-of select="@id"/>
+            </xsl:attribute>
+            <xsl:attribute name="expr">+ Var<xsl:value-of select="@id"/>[4]
+            </xsl:attribute>
         </assign>
     </xsl:template>
 

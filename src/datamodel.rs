@@ -1,12 +1,13 @@
 //! Defines the API used to access the data models.
 
 use std::any::Any;
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
 use std::sync::{Arc, LockResult, Mutex, MutexGuard};
 
-use log::error;
+use log::{debug, error};
 
 use crate::actions::ActionMap;
 use crate::event_io_processor::EventIOProcessor;
@@ -118,10 +119,13 @@ pub trait Datamodel {
     fn get_name(&self) -> &str;
 
     /// Adds the "In" and other function.\
-    /// If needed, adds also "log" function and sets '_ioprocessors'.
+    /// If needed, adds also "log" function.
     fn add_functions(&mut self, fsm: &mut Fsm);
 
-    /// Initialize the data model for one data-store.
+    /// sets '_ioprocessors'.
+    fn set_ioprocessors(&mut self);
+
+        /// Initialize the data model for one data-store.
     /// This method is called for the global data and for the data of each state.
     #[allow(non_snake_case)]
     fn initializeDataModel(&mut self, fsm: &mut Fsm, state: StateId, set_data: bool) {
@@ -319,7 +323,7 @@ pub trait Datamodel {
                                 // get_by_location already added "error.execution"
                             }
                             Ok(value) => {
-                                values.push(ParamPair::new_moved(param.name.clone(), value));
+                                values.push(ParamPair::new_moved(param.name.clone(), value.lock().unwrap().clone()));
                             }
                         }
                     } else if !param.expr.is_empty() {
@@ -333,7 +337,7 @@ pub trait Datamodel {
                                 self.internal_error_execution();
                             }
                             Ok(value) => {
-                                values.push(ParamPair::new_moved(param.name.clone(), value.clone()));
+                                values.push(ParamPair::new_moved(param.name.clone(), value.lock().unwrap().clone()));
                             }
                         }
                     }
@@ -414,6 +418,11 @@ impl Datamodel for NullDatamodel {
         }
         // self.actions =  actions.get_map_copy()
     }
+
+    fn set_ioprocessors(&mut self) {
+        // nothing to do
+    }
+
 
     #[allow(non_snake_case)]
     fn initializeDataModel(&mut self, _fsm: &mut Fsm, _dataState: StateId, _set_data: bool) {
@@ -820,13 +829,40 @@ impl Data {
                         Data::Error("Incompatible Datatypes".to_string())
                     }
                 }
+                Operator::Equal => {
+                    if let Data::Map(right_content) = right {
+                        for (key, right_arc) in right_content {
+                            match self_content.get(key) {
+                                None => {
+                                    return Data::Boolean(false)
+                                }
+                                Some(self_arc) => {
+                                    if !Arc::ptr_eq( &self_arc.arc, &right_arc.arc ) {
+                                        // to avoid deadlocks: copy
+                                        let self_data_clone = self_arc.lock().unwrap().clone();
+                                        let right_data_clone = right_arc.lock().unwrap().clone();
+                                        if let Data::Boolean(r) = self_data_clone.operation(Operator::Equal, &right_data_clone) {
+                                            if !r {
+                                                return Data::Boolean(false)
+                                            }
+                                        } else {
+                                            return Data::Boolean(false)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Data::Boolean(true)
+                    } else {
+                        Data::Error("Incompatible Datatypes".to_string())
+                    }
+                }
                 Operator::Minus
                 | Operator::Less
                 | Operator::LessEqual
                 | Operator::Greater
                 | Operator::GreaterEqual
-                | Operator::Equal
-                | Operator::NotEqual => Data::Error("Operation not yet supported for maps".to_string()),
+                | Operator::NotEqual => Data::Error(format!("Operation {:?} not yet supported for maps", op)),
             },
             Data::Null() => match op {
                 Operator::Not
@@ -931,14 +967,30 @@ impl Default for Data {
     }
 }
 
+pub const DATA_FLAG_READONLY: u8 = 1u8;
+
+
 #[derive(Debug, Clone)]
 pub struct DataArc {
     pub arc: Arc<Mutex<Data>>,
+    pub flags: u8,
 }
 
 impl DataArc {
     pub fn lock(&self) -> LockResult<MutexGuard<'_, Data>> {
         self.arc.lock()
+    }
+
+    pub fn is_readonly(&self) -> bool {
+        (self.flags & DATA_FLAG_READONLY) != 0
+    }
+
+    pub fn set_readonly(&mut self, read_only: bool) {
+        if read_only {
+            self.flags |= DATA_FLAG_READONLY;
+        } else {
+            self.flags &= !DATA_FLAG_READONLY;
+        }
     }
 }
 
@@ -964,6 +1016,7 @@ impl Display for DataArc {
 pub fn create_data_arc(data: Data) -> DataArc {
     DataArc {
         arc: Arc::new(Mutex::from(data)),
+        flags: 0,
     }
 }
 
@@ -986,7 +1039,13 @@ impl DataStore {
     }
 
     pub fn get(&self, key: &str) -> Option<DataArc> {
-        self.map.get(key).cloned()
+        match self.map.get(key) {
+            None => None,
+            Some(v) => {
+                println!("Get -> {}", v);
+                Some(v.clone())
+            }
+        }
     }
 
     pub fn set(&mut self, key: String, data: Data) -> bool {
@@ -995,21 +1054,45 @@ impl DataStore {
 
     pub fn set_arc(&mut self, key: String, data: DataArc) -> bool {
         // W3C want to assign only to defined variables.
-        if let std::collections::hash_map::Entry::Occupied(mut e) = self.map.entry(key) {
-            e.insert(data);
-            true
+        if let std::collections::hash_map::Entry::Occupied(mut old) = self.map.entry(key) {
+            if old.get().is_readonly() {
+                #[cfg(feature = "Debug")]
+                debug!( "Can set read-only {}", old.key() );
+                false
+            } else {
+                old.insert(data);
+                true
+            }
         } else {
             false
         }
-
     }
-
 
     pub fn set_undefined(&mut self, key: String, data: Data) {
         self.set_undefined_arc(key, create_data_arc(data));
     }
 
     pub fn set_undefined_arc(&mut self, key: String, data: DataArc) {
-        self.map.insert(key, data);
+        match self.map.entry(key) {
+            Entry::Occupied(mut old) => {
+                if old.get().is_readonly() {
+                    #[cfg(feature = "Debug")]
+                    debug!( "Can set read-only {}", old.key() );
+                } else {
+                    old.insert(data);
+                }
+            }
+            Entry::Vacant(x) => {
+                x.insert(data);
+            }
+        }
+    }
+
+    pub fn dump(&self) {
+        println!("===============");
+        for (key, data) in &self.map {
+            println!("{}: {}", key, data );
+        }
+        println!("===============")
     }
 }

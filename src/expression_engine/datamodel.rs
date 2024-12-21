@@ -1,14 +1,11 @@
 //! Implements the SCXML Data model for rFSM Expressions.\
 
 use log::{debug, error};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap};
 use std::ops::Deref;
 
-use crate::datamodel::{
-    create_data_arc, Data, DataArc, Datamodel, DatamodelFactory, GlobalDataArc, EVENT_VARIABLE_FIELD_DATA,
-    EVENT_VARIABLE_FIELD_INVOKE_ID, EVENT_VARIABLE_FIELD_NAME, EVENT_VARIABLE_FIELD_ORIGIN,
-    EVENT_VARIABLE_FIELD_ORIGIN_TYPE, EVENT_VARIABLE_FIELD_SEND_ID, EVENT_VARIABLE_FIELD_TYPE, EVENT_VARIABLE_NAME,
-};
+use crate::datamodel::{create_data_arc, Data, DataArc, Datamodel, DatamodelFactory, GlobalDataArc, EVENT_VARIABLE_FIELD_DATA, EVENT_VARIABLE_FIELD_INVOKE_ID, EVENT_VARIABLE_FIELD_NAME, EVENT_VARIABLE_FIELD_ORIGIN, EVENT_VARIABLE_FIELD_ORIGIN_TYPE, EVENT_VARIABLE_FIELD_SEND_ID, EVENT_VARIABLE_FIELD_TYPE, EVENT_VARIABLE_NAME};
+use crate::event_io_processor::SYS_IO_PROCESSORS;
 use crate::expression_engine::expressions::ExpressionResult;
 use crate::expression_engine::expressions::ExpressionResult::Value;
 use crate::expression_engine::parser::ExpressionParser;
@@ -19,7 +16,6 @@ pub const RFSM_EXPRESSION_DATAMODEL_LC: &str = "rfsm-expression";
 
 pub struct RFsmExpressionDatamodel {
     pub global_data: GlobalDataArc,
-    pub readonly: HashSet<String>,
     null_data: DataArc,
 }
 
@@ -27,25 +23,7 @@ impl RFsmExpressionDatamodel {
     pub fn new(global_data: GlobalDataArc) -> RFsmExpressionDatamodel {
         RFsmExpressionDatamodel {
             global_data,
-            readonly: HashSet::new(),
             null_data: create_data_arc(Data::Null()),
-        }
-    }
-
-    fn set_arc(&mut self, name: &str, data: DataArc, allow_undefined : bool) {
-        println!("set {} = {}", name, data);
-        if allow_undefined {
-            self.global_data
-                .lock()
-                .unwrap()
-                .data
-                .set_undefined_arc(name.to_string(), data);
-        } else {
-            self.global_data
-            .lock()
-            .unwrap()
-            .data
-            .set_arc(name.to_string(), data);
         }
     }
 
@@ -144,6 +122,21 @@ impl Datamodel for RFsmExpressionDatamodel {
 
     fn add_functions(&mut self, _fsm: &mut Fsm) {}
 
+    fn set_ioprocessors(&mut self) {
+
+        let session_id = self.global_s().lock().unwrap().session_id;
+        let mut io_processors_dings = HashMap::new();
+        for (name, processor) in &self.global_data.lock().unwrap().io_processors {
+            let mut processor_data = HashMap::new();
+            let location = create_data_arc(Data::String(processor.lock().unwrap().get_location(session_id)));
+            processor_data.insert("location".to_string(), location);
+            io_processors_dings.insert(name.clone(), create_data_arc(Data::Map(processor_data)));
+        }
+        let mut data_arc = create_data_arc(Data::Map(io_processors_dings));
+        data_arc.set_readonly(true);
+        self.set_arc(SYS_IO_PROCESSORS, data_arc, true );
+    }
+
     fn set_from_state_data(&mut self, data: &HashMap<String, DataArc>, set_data: bool) {
         for (name, value) in data {
             if set_data {
@@ -178,13 +171,31 @@ impl Datamodel for RFsmExpressionDatamodel {
         }
     }
 
-    fn initialize_read_only_arc(&mut self, name: &str, value: DataArc) {
-        // TODO
-        self.set_arc(name, value, true);
+    fn initialize_read_only_arc(&mut self, name: &str, mut value: DataArc) {
+        value.set_readonly(true);
+        println!("initialize_read_only_arc {} = {}", name, value);
+        self.global_data
+            .lock()
+            .unwrap()
+            .data
+            .set_undefined_arc(name.to_string(), value);
     }
 
     fn set_arc(&mut self, name: &str, data: DataArc, allow_undefined: bool) {
-        self.set_arc(name, data, allow_undefined );
+        println!("set {} = {}", name, data);
+        if allow_undefined {
+            self.global_data
+                .lock()
+                .unwrap()
+                .data
+                .set_undefined_arc(name.to_string(), data);
+        } else {
+            self.global_data
+                .lock()
+                .unwrap()
+                .data
+                .set_arc(name.to_string(), data);
+        }
     }
 
     fn set_event(&mut self, event: &Event) {
@@ -196,7 +207,7 @@ impl Datamodel for RFsmExpressionDatamodel {
             Some(pv) => {
                 let mut data = HashMap::with_capacity(pv.len());
                 for pair in pv.iter() {
-                    data.insert(pair.name.clone(), pair.value.clone());
+                    data.insert(pair.name.clone(), create_data_arc(pair.value.clone()));
                 }
                 create_data_arc(Data::Map(data))
             }
@@ -288,7 +299,8 @@ impl Datamodel for RFsmExpressionDatamodel {
         );
         match data {
             Value(r) => {
-                match r.lock().unwrap().deref() {
+                let dc = r.lock().unwrap().clone();
+                match  dc {
                     Data::Map(map) => {
                         let mut idx: i64 = 0;
                         if self.assign_internal(item_name, "null", true) {
