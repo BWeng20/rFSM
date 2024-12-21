@@ -49,6 +49,9 @@ pub mod event_io_processor;
 #[cfg(feature = "Trace")]
 pub mod tracer;
 
+#[cfg(feature = "TraceServer")]
+pub mod remote_tracer;
+
 pub mod actions;
 pub mod test;
 

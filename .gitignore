@@ -1,6 +1,5 @@
 /target
 /.idea/
-/Cargo.lock
 /test/w3c/manual_txml/
 /test/w3c/txml/
 /test/w3c/saxon/
@@ -8,3 +7,5 @@
 /test/w3c/scxml/
 /test/w3c/logs/
 /test/w3c/dependencies/
+/test/w3c/rfsm/
+/test/w3c/rfsm_logs/

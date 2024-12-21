@@ -4,6 +4,7 @@
 extern crate core;
 
 use log::error;
+#[cfg(feature = "ECMAScript")]
 use rfsm::ecma_script_datamodel::ECMA_STRICT_ARGUMENT;
 use std::io::{stdout, Write};
 use std::{io, process, thread, time};
@@ -14,6 +15,7 @@ use rfsm::fsm_executor::FsmExecutor;
 #[cfg(feature = "Trace")]
 use rfsm::handle_trace;
 use rfsm::init_logging;
+#[cfg(feature = "xml")]
 use rfsm::scxml_reader::INCLUDE_PATH_ARGUMENT_OPTION;
 #[cfg(feature = "Trace")]
 use rfsm::tracer::{TraceMode, TRACE_ARGUMENT_OPTION};
@@ -28,7 +30,7 @@ async fn main() {
         &TRACE_ARGUMENT_OPTION,
         #[cfg(feature = "xml")]
         &INCLUDE_PATH_ARGUMENT_OPTION,
-        #[cfg(feature = "boa_engine")]
+        #[cfg(feature = "ECMAScript")]
         &ECMA_STRICT_ARGUMENT,
     ]);
 
@@ -83,7 +85,7 @@ async fn main() {
         thread::sleep(time::Duration::from_millis(200));
 
         // If FSM was reached final state(s) the worker thread will be finished.
-        match &session.session_thread {
+        match &session.thread {
             None => {}
             Some(thread) => {
                 if thread.is_finished() {
