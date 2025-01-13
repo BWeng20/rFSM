@@ -42,21 +42,21 @@ use crate::datamodel::{
     NULL_DATAMODEL, NULL_DATAMODEL_LC, SCXML_INVOKE_TYPE, SCXML_INVOKE_TYPE_SHORT, SESSION_ID_VARIABLE_NAME,
     SESSION_NAME_VARIABLE_NAME,
 };
-#[cfg(feature = "ECMAScript")]
-use crate::ecma_script_datamodel::ECMAScriptDatamodelFactory;
-#[cfg(feature = "ECMAScript")]
-use crate::ecma_script_datamodel::ECMA_SCRIPT_LC;
+#[cfg(feature = "ECMAScriptModel")]
+use crate::datamodel::ecma_script::ECMAScriptDatamodelFactory;
+#[cfg(feature = "ECMAScriptModel")]
+use crate::datamodel::ecma_script::ECMA_SCRIPT_LC;
 
 use crate::event_io_processor::EventIOProcessor;
 use crate::executable_content::ExecutableContent;
 
 #[cfg(feature = "RfsmExpressionModel")]
-use crate::expression_engine::datamodel::{RFsmExpressionDatamodelFactory, RFSM_EXPRESSION_DATAMODEL_LC};
+use crate::datamodel::expression_engine::{RFsmExpressionDatamodelFactory, RFSM_EXPRESSION_DATAMODEL_LC};
 
 use crate::fsm::BindingType::{Early, Late};
 use crate::fsm_executor::FsmExecutor;
 use crate::get_global;
-use crate::scxml_event_io_processor::{SCXML_EVENT_PROCESSOR_SHORT_TYPE, SCXML_TARGET_SESSION_ID_PREFIX};
+use crate::event_io_processor::scxml_event_io_processor::{SCXML_EVENT_PROCESSOR_SHORT_TYPE, SCXML_TARGET_SESSION_ID_PREFIX};
 
 #[cfg(feature = "Trace")]
 use crate::tracer::create_tracer;
@@ -100,6 +100,7 @@ pub fn start_fsm_with_data_and_finish_mode(
     let data_copy = data.to_vec();
     let session_id: SessionId = SESSION_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
     let mut session = ScxmlSession::new_without_join_handle(session_id, sender.clone());
+    session.global_data.lock().unwrap().source = Some(sm.name.clone());
 
     match finish_mode {
         FinishMode::DISPOSE => {}
@@ -144,7 +145,7 @@ pub fn start_fsm_with_data_and_finish_mode(
         ))
         .spawn(move || {
             #[cfg(feature = "Debug")]
-            debug!("SM starting...");
+            debug!("SM Session {} starting...", session_id);
             {
                 let mut datamodel = create_datamodel(sm.datamodel.as_str(), global_data, &options);
                 {
@@ -744,6 +745,20 @@ impl Display for Event {
 }
 
 impl Event {
+
+    pub fn new_external() -> Event {
+        Event {
+            name: String::default(),
+            etype: EventType::external,
+            sendid: None,
+            origin: None,
+            param_values: None,
+            content: None,
+            invoke_id: None,
+            origin_type: None,
+        }
+    }
+
     pub fn new_simple(name: &str) -> Event {
         Event {
             name: name.to_string(),
@@ -1008,6 +1023,7 @@ pub struct Parameter {
 #[allow(non_snake_case)]
 #[derive(Default)]
 pub struct GlobalData {
+    pub source: Option<String>,
     pub executor: Option<Box<FsmExecutor>>,
     pub actions: ActionWrapper,
     pub configuration: OrderedSet<StateId>,
@@ -1043,6 +1059,7 @@ pub struct GlobalData {
 impl GlobalData {
     pub fn new() -> GlobalData {
         GlobalData {
+            source: None,
             executor: None,
             actions: ActionWrapper::new(),
             configuration: OrderedSet::new(),
@@ -1151,6 +1168,7 @@ pub struct Fsm {
     pub executableContent: HashMap<ExecutableContentId, Vec<Box<dyn ExecutableContent>>>,
 
     pub name: String,
+    pub file: Option<String>,
 
     /// An FSM can have actual multiple initial-target-states, so this state may be artificial.
     /// Reader has to generate a parent state if needed.
@@ -1238,6 +1256,7 @@ impl Fsm {
             caller_invoke_id: None,
             parent_session_id: None,
             name: "FSM".to_string(),
+            file: None,
             script: 0,
             version: "1.0".to_string(),
             binding: BindingType::Early,
@@ -3561,7 +3580,7 @@ lazy_static! {
     static ref datamodel_factories: Arc<Mutex<HashMap<String, Box<dyn DatamodelFactory>>>> = {
         let mut hs: HashMap<String, Box<dyn DatamodelFactory>> = HashMap::new();
 
-        #[cfg(feature = "ECMAScript")]
+        #[cfg(feature = "ECMAScriptModel")]
         hs.insert(
             ECMA_SCRIPT_LC.to_string(),
             Box::new(ECMAScriptDatamodelFactory {}),
@@ -3726,26 +3745,27 @@ impl Action for DebugAction {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(all(feature = "ECMAScriptModel", feature = "xml"))]
+    use crate::fsm::EventType;
+    use crate::fsm::List;
     use crate::fsm::OrderedSet;
-    use crate::fsm::{EventType, List};
-    #[cfg(feature = "Trace")]
+    #[cfg(all(feature = "Trace", feature = "ECMAScriptModel"))]
     use crate::tracer::TraceMode;
+    #[cfg(all(feature = "ECMAScriptModel", feature = "xml"))]
     use std::collections::HashMap;
 
-    #[cfg(feature = "ECMAScript")]
-    #[cfg(feature = "xml")]
+    #[cfg(all(feature = "ECMAScriptModel", feature = "xml"))]
     use crate::scxml_reader;
 
-    #[cfg(feature = "ECMAScript")]
-    #[cfg(feature = "xml")]
+    #[cfg(all(feature = "ECMAScriptModel", feature = "xml"))]
     use std::sync::mpsc::Sender;
 
+    #[cfg(all(feature = "ECMAScriptModel", feature = "xml"))]
     use crate::test::run_test_manual_with_send;
-    #[cfg(feature = "ECMAScript")]
-    #[cfg(feature = "xml")]
+    #[cfg(all(feature = "ECMAScriptModel", feature = "xml"))]
     use crate::Event;
 
-    #[cfg(feature = "ECMAScript")]
+    #[cfg(feature = "ECMAScriptModel")]
     #[cfg(feature = "xml")]
     fn test_send(sender: &Sender<Box<Event>>, e: Event) {
         let _r = sender.send(Box::new(e));
@@ -4034,7 +4054,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "ECMAScript")]
+    #[cfg(feature = "ECMAScriptModel")]
     #[cfg(feature = "xml")]
     fn fsm_shall_exit() {
         // init_logging();

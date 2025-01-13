@@ -1,8 +1,10 @@
 /target
 /.idea/
+/test/w3c/optional_txml/
 /test/w3c/manual_txml/
 /test/w3c/txml/
 /test/w3c/saxon/
+/test/w3c/optional_scxml/
 /test/w3c/manual_scxml/
 /test/w3c/scxml/
 /test/w3c/logs/

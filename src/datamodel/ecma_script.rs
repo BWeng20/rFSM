@@ -1,5 +1,5 @@
 //! Implements the SCXML Data model for ECMA with Boa Engine.\
-//! Included if feature "ECMAScript" is enabled.\
+//! Included if feature "ECMAScriptModel" is enabled.\
 //! See [W3C:The ECMAScript Data Model](/doc/W3C_SCXML_2024_07_13/index.html#ecma-profile).\
 //! See [GitHub:Boa Engine](https://github.com/boa-dev/boa).
 
@@ -18,6 +18,12 @@ use std::{println as warn, println as debug};
 
 #[cfg(all(not(test), feature = "Debug", feature = "EnvLog"))]
 use log::{debug, warn};
+
+#[cfg(all(not(test), not(feature="Debug"), feature="EnvLog"))]
+use log::warn;
+
+#[cfg(all(not(test), not(feature="Debug"), not(feature = "EnvLog")))]
+use std::println as warn;
 
 #[cfg(all(not(test), not(feature = "EnvLog")))]
 use std::{println as error, println as info};

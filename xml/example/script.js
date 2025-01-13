@@ -1,1 +1,0 @@
-log("Hello from included script");

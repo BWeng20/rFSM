@@ -1,6 +1,6 @@
 # Tests from W3C
 
-This folder contains scripts to execute the tests described in [SCXML 1.0 Implementation Report](https://www.w3.org/Voice/2013/scxml-irp/).
+The project repository contains scripts to execute the tests described in [SCXML 1.0 Implementation Report](https://www.w3.org/Voice/2013/scxml-irp/).
 
 ## Download and Transform
 

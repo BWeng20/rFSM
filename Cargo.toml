@@ -1,8 +1,16 @@
 [package]
-name = "rfsm"
-version = "0.2.0"
+name = "ruFsm"
+version = "1.0.0-alpha"
+description = "A SCXML (Harel Statecharts) Implememtation"
+license = "Unlicense"
+authors = ["Bernd Wengenroth"]
+keywords = ["Harel", "statechart", "SCXML", "statemachine" ]
+readme = "README.md"
+repository = "https://github.com/BWeng20/ruFSM"
+publish = true
 edition = "2021"
 default-run = "fsm"
+exclude = ["/examples", "/schema", ".*", "/doc", "/test", "!/test/w3c/README.md", "!/test/w3c/REPORT.MD"]
 
 [profile.release]
 strip = true  # Automatically strip symbols from the binary.
@@ -20,18 +28,18 @@ name = "scxml_to_fsm"
 required-features = ["xml", "serializer" ]
 
 [lib]
-name = "rfsm"
+name = "rufsm"
 path = "src/lib.rs"
 
 [features]
-default = [ "json-config", "ECMAScript", "RfsmExpressionModel", "Debug", "xml", "EnvLog", "serializer"  ]
-ECMAScript = ["boa_engine", "boa_gc"]
+default = [ "ECMAScriptModel", "RfsmExpressionModel", "xml", "serializer", "json-config", "BasicHttpEventIOProcessor", "Debug", "Trace" ]
+ECMAScriptModel = ["boa_engine", "boa_gc"]
 RfsmExpressionModel = ["ExpressionEngine"]
-BasicHttpEventIOProcessor = ["hyper", "http-body-util", "hyper-util", "form_urlencoded"]
+BasicHttpEventIOProcessor = ["ureq", "rocket"]
 yaml-config = ["yaml-rust"]
 json-config = ["serde", "serde_json", "serde/serde_derive"]
 serializer = []
-xml = ["quick-xml", "reqwest"]
+xml = ["quick-xml", "ureq", "url" ]
 
 # Enables the expression engine runtime
 ExpressionEngine = []
@@ -52,6 +60,7 @@ Trace_Event = [ "Trace"  ]
 Debug = [ "Trace_Event", "Trace_State", "Trace_Method" ]
 
 [dependencies]
+rocket = {  version="0.5", default-features=false, features = [], optional = true }
 log = "0.4"
 timer = "0.2"
 chrono = "0.4"
@@ -60,18 +69,15 @@ quick-xml = { version = "0.36", features = ["serialize"],  optional = true }
 boa_engine = { version = "0.19", optional = true }
 boa_gc = { version = "0.19", optional = true }
 env_logger = { version = "0.11", optional = true }
-reqwest = { version = "0.12", features = ["blocking", "json"],  optional = true }
-hyper = { version = "1.4", features = ["full"], optional = true }
-http-body-util = { version = "0.1", optional = true }
-hyper-util = { version = "0.1", features = ["full"], optional = true }
+ureq = { version = "2.12", optional = true }
+url =  { version = "2.5", optional = true }
 tokio = { version = "1.38", features = ["rt","macros", "rt-multi-thread" ] }
-form_urlencoded = { version = "1.2", optional = true }
 serde_json = { version = "1.0.117", optional = true }
 yaml-rust = { version = "0.4.5", optional = true }
 serde = { version = "1.0", optional = true }
 byteorder = "1.5.0"
 
 [[example]]
-required-features = [ "EnvLog", "ECMAScript", "xml", "serializer" ]
+required-features = [ "EnvLog", "ECMAScriptModel", "xml", "serializer" ]
 name = "CustomActions"
 path = "examples/CustomActions.rs"

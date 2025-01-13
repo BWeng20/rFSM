@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A Simple FSM that demonstrate use BasicHTTPIoProcessor.  -->
+<scxml xmlns="http://www.w3.org/2005/07/scxml" initial="s0" version="1.0" datamodel="rfsm-expression"
+       name="HTTPIOProcExample">
+<script>
+    log("Location: "+_ioprocessors["http://www.w3.org/TR/scxml/#BasicHTTPEventProcessor"].location)
+</script>
+    <state id="s0">
+        <transition event="leave" target="end"/>
+        <onentry>
+            <send type="http://www.w3.org/TR/scxml/#BasicHTTPEventProcessor" targetexpr="_ioprocessors['basichttp'].location" event="leave" delay="2s">
+                <param name="p1" expr="'abc'"/>
+                <param name="p2" expr="123"/>
+            </send>
+        </onentry>
+    </state>
+
+    <final id="end">
+        <onentry>
+            <log expr="'FSM Finished'"/>
+        </onentry>
+    </final>
+</scxml>

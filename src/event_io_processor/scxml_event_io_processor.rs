@@ -14,7 +14,7 @@ use std::fmt::Debug;
 use std::println as debug;
 
 use crate::datamodel::{GlobalDataArc, GlobalDataLock, SCXML_EVENT_PROCESSOR};
-use crate::event_io_processor::{EventIOProcessor, EventIOProcessorHandle};
+use crate::event_io_processor::{EventIOProcessor, ExternalQueueContainer};
 use crate::fsm::{Event, EventType, SessionId};
 
 /// SCXML Processors specific target:\
@@ -43,7 +43,7 @@ pub const SCXML_EVENT_PROCESSOR_SHORT_TYPE: &str = "scxml";
 #[derive(Debug, Default)]
 pub struct ScxmlEventIOProcessor {
     pub location: String,
-    pub handle: EventIOProcessorHandle,
+    pub handle: ExternalQueueContainer,
 }
 
 impl ScxmlEventIOProcessor {
@@ -53,7 +53,7 @@ impl ScxmlEventIOProcessor {
 
         ScxmlEventIOProcessor {
             location: SCXML_TARGET_SESSION_ID_PREFIX.to_string(),
-            handle: EventIOProcessorHandle::new(),
+            handle: ExternalQueueContainer::new(),
         }
     }
 
@@ -93,7 +93,7 @@ impl EventIOProcessor for ScxmlEventIOProcessor {
         TYPES
     }
 
-    fn get_handle(&mut self) -> &mut EventIOProcessorHandle {
+    fn get_external_queues(&mut self) -> &mut ExternalQueueContainer {
         &mut self.handle
     }
 

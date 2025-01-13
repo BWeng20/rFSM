@@ -4,6 +4,7 @@ extern crate core;
 
 use crate::fsm::Fsm;
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 #[cfg(feature = "serializer")]
 use std::fs::File;
 #[cfg(feature = "serializer")]
@@ -11,19 +12,19 @@ use std::io::BufReader;
 
 use std::path::PathBuf;
 use std::sync::mpsc::{SendError, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LockResult, Mutex, MutexGuard};
 
 #[cfg(feature = "Debug")]
 use log::debug;
 
 use crate::actions::ActionWrapper;
-#[cfg(feature = "BasicHttpEventIOProcessor")]
-use crate::basic_http_event_io_processor::BasicHTTPEventIOProcessor;
 use crate::datamodel::DATAMODEL_OPTION_PREFIX;
 use crate::event_io_processor::EventIOProcessor;
 use crate::fsm;
 use crate::fsm::{Event, FinishMode, InvokeId, ParamPair, ScxmlSession, SessionId};
-use crate::scxml_event_io_processor::ScxmlEventIOProcessor;
+#[cfg(feature = "BasicHttpEventIOProcessor")]
+use crate::event_io_processor::http_event_io_processor::BasicHTTPEventIOProcessor;
+use crate::event_io_processor::scxml_event_io_processor::ScxmlEventIOProcessor;
 #[cfg(feature = "xml")]
 use crate::scxml_reader;
 #[cfg(feature = "xml")]
@@ -38,15 +39,55 @@ use crate::tracer::TraceMode;
 use std::net::{IpAddr, Ipv4Addr};
 
 #[derive(Default)]
-pub struct ExecuteState {
+pub struct ExecutorState {
     pub processors: Vec<Arc<Mutex<Box<dyn EventIOProcessor>>>>,
     pub sessions: HashMap<SessionId, ScxmlSession>,
     pub datamodel_options: HashMap<String, String>,
 }
 
-impl ExecuteState {
-    pub fn new() -> ExecuteState {
-        ExecuteState {
+#[derive(Clone)]
+pub struct ExecutorStateArc {
+    pub arc: Arc<Mutex<ExecutorState>>,
+}
+
+impl ExecutorStateArc {
+    fn new() -> ExecutorStateArc {
+        ExecutorStateArc {
+            arc: Arc::new(Mutex::new(ExecutorState::new())),
+        }
+    }
+
+    fn print(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self.arc.try_lock() {
+            Ok(val) => {
+                write!(f, "#{} Sessions", val.sessions.len())
+            }
+            Err(_) => {
+                write!(f, "<locked arc>")
+            }
+        }
+    }
+
+    pub fn lock(&self) -> LockResult<MutexGuard<'_, ExecutorState>> {
+        self.arc.lock()
+    }
+}
+
+impl Display for ExecutorStateArc {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.print(f)
+    }
+}
+
+impl std::fmt::Debug for ExecutorStateArc {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        self.print(f)
+    }
+}
+
+impl ExecutorState {
+    pub fn new() -> ExecutorState {
+        ExecutorState {
             processors: Vec::new(),
             sessions: HashMap::new(),
             datamodel_options: HashMap::new(),
@@ -58,7 +99,7 @@ impl ExecuteState {
 /// This class maintains IO Processors used by the FSMs and running sessions.
 #[derive(Clone)]
 pub struct FsmExecutor {
-    pub state: Arc<Mutex<ExecuteState>>,
+    pub state: ExecutorStateArc,
     pub include_paths: Vec<PathBuf>,
 }
 
@@ -73,7 +114,7 @@ impl FsmExecutor {
 
     pub fn new_without_io_processor() -> FsmExecutor {
         let mut e = FsmExecutor {
-            state: Arc::new(Mutex::new(ExecuteState::new())),
+            state: ExecutorStateArc::new(),
             include_paths: Vec::new(),
         };
         e.add_processor(Box::new(ScxmlEventIOProcessor::new()));
@@ -82,13 +123,19 @@ impl FsmExecutor {
 
     pub async fn new_with_io_processor() -> FsmExecutor {
         let mut e = FsmExecutor {
-            state: Arc::new(Mutex::new(ExecuteState::new())),
+            state: ExecutorStateArc::new(),
             include_paths: Vec::new(),
         };
         #[cfg(feature = "BasicHttpEventIOProcessor")]
         {
             let w = Box::new(
-                BasicHTTPEventIOProcessor::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), "localhost", 5555).await,
+                BasicHTTPEventIOProcessor::new(
+                    IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+                    "localhost",
+                    5555,
+                    e.state.clone(),
+                )
+                .await,
             );
             e.add_processor(w);
         }
@@ -189,6 +236,10 @@ impl FsmExecutor {
 
         #[cfg(all(not(feature = "xml"), not(feature = "serializer")))]
         let sm = Ok(Box::new(Fsm::new()));
+
+        if let Ok(ref mut fsm) = &mut sm {
+            fsm.file = Some(uri.to_string());
+        }
 
         match sm {
             Ok(mut fsm) => {

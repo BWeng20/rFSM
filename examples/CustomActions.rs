@@ -1,13 +1,13 @@
 use log::{debug, error};
-use rfsm::actions::{Action, ActionWrapper};
-use rfsm::datamodel::Data;
-use rfsm::fsm::GlobalData;
-use rfsm::fsm_executor::FsmExecutor;
-use rfsm::init_logging;
+use rufsm::actions::{Action, ActionWrapper};
+use rufsm::datamodel::Data;
+use rufsm::fsm::GlobalData;
+use rufsm::fsm_executor::FsmExecutor;
+use rufsm::init_logging;
 use std::process::exit;
 
 #[cfg(feature = "Trace")]
-use rfsm::tracer::TraceMode;
+use rufsm::tracer::TraceMode;
 
 #[derive(Clone)]
 pub struct MyAction {}

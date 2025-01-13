@@ -29,6 +29,12 @@ use crate::fsm::{
 use crate::actions::ActionMap;
 use crate::event_io_processor::EventIOProcessor;
 
+#[cfg(feature = "ECMAScriptModel")]
+pub mod ecma_script;
+
+#[cfg(feature = "RfsmExpressionModel")]
+pub mod expression_engine;
+
 pub const DATAMODEL_OPTION_PREFIX: &str = "datamodel:";
 
 pub const NULL_DATAMODEL: &str = "NULL";
@@ -579,7 +585,7 @@ pub fn data_to_string(data: &Data) -> Result<String, String> {
                     v.push(',');
                 }
                 v.push_str(key);
-                v.push_str(":");
+                v.push(':');
                 match data_arc_to_string(data_arc) {
                     Ok(s) => {
                         v.push_str(s.as_str());
@@ -1179,6 +1185,7 @@ impl DataStore {
     }
 
     pub fn get(&self, key: &str) -> Option<DataArc> {
+        #[allow(clippy::manual_map)]
         match self.map.get(key) {
             None => {
                 #[cfg(feature = "Debug")]

@@ -1,11 +1,11 @@
 extern crate core;
 
 use log::error;
-use rfsm::scxml_reader::include_path_from_arguments;
-use rfsm::scxml_reader::INCLUDE_PATH_ARGUMENT_OPTION;
-use rfsm::serializer::default_protocol_writer::DefaultProtocolWriter;
-use rfsm::serializer::fsm_writer::FsmWriter;
-use rfsm::{init_logging, scxml_reader};
+use rufsm::scxml_reader::include_path_from_arguments;
+use rufsm::scxml_reader::INCLUDE_PATH_ARGUMENT_OPTION;
+use rufsm::serializer::default_protocol_writer::DefaultProtocolWriter;
+use rufsm::serializer::fsm_writer::FsmWriter;
+use rufsm::{init_logging, scxml_reader};
 use std::fs::File;
 use std::io::BufWriter;
 use std::process;
@@ -14,7 +14,7 @@ use std::process;
 async fn main() {
     init_logging();
 
-    let (named_opt, final_args) = rfsm::get_arguments(&[&INCLUDE_PATH_ARGUMENT_OPTION]);
+    let (named_opt, final_args) = rufsm::get_arguments(&[&INCLUDE_PATH_ARGUMENT_OPTION]);
 
     if final_args.len() < 2 {
         println!("Missing argument. Please specify scxml-input- and fsm-output-file");

@@ -65,6 +65,8 @@ fi
 
 mkdir -p manual_txml
 mkdir -p manual_scxml
+mkdir -p optional_txml
+mkdir -p optional_scxml
 mkdir -p txml
 mkdir -p scxml
 mkdir -p dependencies/scxml
@@ -115,6 +117,25 @@ for TEST_URI in $(xmllint --xpath "//assert/test[@conformance='mandatory' and @m
     java -jar saxon/$SAXON_JAR -o:manual_scxml/$TEST_FILE.scxml -xsl:txml/$XSL_FILE -s:manual_txml/$TEST_FILE
   fi
 done
+
+# Select all optional
+for TEST_URI in $(xmllint --xpath "//assert/test[@conformance='optional']/start[contains(@uri,'.txml')]/@uri"  txml/manifest.xml | cut '-d"' -f2); do
+  TEST_FILE=$(cut '-d/' -f2 <<< "$TEST_URI")
+  if [ ! -f optional_txml/$TEST_FILE ]; then
+    if [ -f optional_scxml/$TEST_FILE.scxml ]; then
+      # Remove transformed version to force update
+      rm optional_scxml/$TEST_FILE.scxml
+    fi
+    echo Fetching $TEST_SOURCE_URL$TEST_URI
+    curl -o optional_txml/$TEST_FILE $TEST_SOURCE_URL$TEST_URI
+  fi
+
+  if [ ! -f optional_scxml/$TEST_FILE.scxml ]; then
+    echo xsl processing $TEST_FILE
+    java -jar saxon/$SAXON_JAR -o:optional_scxml/$TEST_FILE.scxml -xsl:txml/$XSL_FILE -s:optional_txml/$TEST_FILE
+  fi
+done
+
 
 
 # Get all dependencies

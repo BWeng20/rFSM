@@ -24,6 +24,7 @@ use log::info;
 use quick_xml::events::attributes::Attributes;
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
+use url::Url;
 
 use crate::executable_content::{
     get_opt_executable_content_as, get_safe_executable_content_as, parse_duration_to_milliseconds, Assign, Cancel,
@@ -671,27 +672,31 @@ impl ReaderState {
     }
 
     fn read_from_uri(&mut self, uri: &String) -> Result<String, String> {
-        let url_result = reqwest::Url::parse(uri);
+        let url_result = Url::parse(uri);
         match url_result {
-            Ok(url) => {
-                #[cfg(feature = "Debug_Reader")]
-
-                debug!("read from URL {}", url);
-
-                match url.scheme().to_ascii_lowercase().as_str() {
-                    "file" => self.read_from_relative_path(url.path()),
-                    &_ => {
-                        let resp = reqwest::blocking::get(url);
-                        match resp {
-                            Ok(r) => match r.text() {
-                                Ok(s) => Ok(s),
-                                Err(e) => Err(format!("Failed to decode from {}. {}", uri, e)),
+            Ok(url) => match url.scheme().to_ascii_lowercase().as_str() {
+                "file" => self.read_from_relative_path(url.path()),
+                &_ => {
+                    #[cfg(feature = "Debug_Reader")]
+                    debug!("read from URL {}", url);
+                    let resp = ureq::get(uri).call();
+                    match resp {
+                        Ok(r) => match r.status() {
+                            200..=299 => match r.into_string() {
+                                Ok(content) => Ok(content),
+                                Err(err) => Err(format!("Failed to load from {}. {}", uri, err)),
                             },
-                            Err(e) => Err(format!("Failed to download {}. {}", uri, e)),
-                        }
+                            _ => Err(format!(
+                                "Failed to load from {}. Status {} {}",
+                                uri,
+                                r.status(),
+                                r.status_text()
+                            )),
+                        },
+                        Err(e) => Err(format!("Failed to download {}. {}", uri, e)),
                     }
                 }
-            }
+            },
             Err(_e) => {
                 #[cfg(feature = "Debug_Reader")]
                 debug!(

@@ -32,19 +32,8 @@ pub mod executable_content;
 pub mod fsm;
 pub mod fsm_executor;
 
-#[cfg(feature = "ECMAScript")]
-pub mod ecma_script_datamodel;
-
-#[cfg(feature = "BasicHttpEventIOProcessor")]
-pub mod basic_http_event_io_processor;
-
-pub mod scxml_event_io_processor;
-
 #[cfg(feature = "serializer")]
 pub mod serializer;
-
-pub mod datamodel;
-pub mod event_io_processor;
 
 #[cfg(feature = "Trace")]
 pub mod tracer;
@@ -53,8 +42,10 @@ pub mod tracer;
 pub mod remote_tracer;
 
 pub mod actions;
-pub mod expression_engine;
 pub mod test;
+pub mod datamodel;
+pub mod expression_engine;
+pub mod event_io_processor;
 
 #[cfg(feature = "Trace")]
 pub fn handle_trace(sender: &mut Sender<Box<Event>>, opt: &str, enable: bool) {
@@ -176,8 +167,8 @@ pub fn init_logging() {
 pub fn get_features() -> Vec<&'static str> {
     // TODO: Any generic way to do this?
     vec![
-        #[cfg(feature = "ECMAScript")]
-        "ECMAScript",
+        #[cfg(feature = "ECMAScriptModel")]
+        "ECMAScriptModel",
         #[cfg(feature = "RfsmExpressionModel")]
         "RfsmExpressionModel",
         #[cfg(feature = "ExpressionEngine")]

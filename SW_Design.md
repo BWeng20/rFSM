@@ -247,7 +247,7 @@ For manual testing your scxml you can use the "fsm" binary of the project.
 The scxml will be parsed and the resulting FSM will be executed. The app prompts for events that are send via the external-event-queue. Enter 'help' to display some usage
 information.
 
-Remind that Tracer uses "log" for any output, to see it on console, you will need to set the log level before starting rfsm. E.g. by a`export RUST_LOG=debug`
+Remind that Tracer uses "log" for any output, to see it on console, you will need to set the log level before starting one of the binaries. E.g. by a`export RUST_LOG=debug`
 or depending on your OS, `set RUST_LOG=debug`.
 
 ### Automated Testing

@@ -1,1 +1,0 @@
-# Schema and examples from W3C

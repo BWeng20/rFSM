@@ -5,6 +5,12 @@ use log::error;
 use std::collections::HashMap;
 use std::ops::Deref;
 
+#[cfg(not(feature = "EnvLog"))]
+use std::println as info;
+
+#[cfg(feature = "EnvLog")]
+use log::info;
+
 #[cfg(feature = "Debug")]
 use log::debug;
 
@@ -165,6 +171,7 @@ impl RFsmExpressionDatamodel {
         actions.add_action("isDefined", Box::new(IsDefinedAction {}));
         actions.add_action("abs", Box::new(AbsAction {}));
         actions.add_action("toString", Box::new(ToStringAction {}));
+        actions.add_action("log", Box::new(LogAction {}));
     }
 
     pub fn add_internal_fsm_functions(&mut self, fsm: &mut Fsm) {
@@ -343,6 +350,28 @@ impl Action for IsDefinedAction {
             }
         } else {
             Err("Wrong number of arguments for 'isDefined'.".to_string())
+        }
+    }
+
+    fn get_copy(&self) -> Box<dyn Action> {
+        Box::new(self.clone())
+    }
+}
+
+#[derive(Clone)]
+pub struct LogAction {}
+impl Action for LogAction {
+    fn execute(&self, arguments: &[Data], _global: &GlobalData) -> Result<Data, String> {
+        if arguments.len() == 1 {
+            match data_to_string(&arguments[0]) {
+                Ok(message) => {
+                    info!("{}", message);
+                    Ok(Data::None())
+                }
+                Err(err) => Err(err),
+            }
+        } else {
+            Err("Wrong number of arguments for 'log'.".to_string())
         }
     }
 
@@ -665,7 +694,7 @@ impl Datamodel for RFsmExpressionDatamodel {
 #[cfg(test)]
 mod tests {
     use crate::datamodel::{create_data_arc, create_global_data_arc, Data};
-    use crate::expression_engine::datamodel::RFsmExpressionDatamodel;
+    use crate::datamodel::expression_engine::RFsmExpressionDatamodel;
     use crate::expression_engine::expressions::ExpressionResult;
     use crate::expression_engine::parser::ExpressionParser;
     use crate::init_logging;

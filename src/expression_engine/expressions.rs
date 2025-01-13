@@ -649,7 +649,7 @@ impl Expression for ExpressionSequence {
 #[cfg(test)]
 mod tests {
     use crate::datamodel::{create_data_arc, create_global_data_arc, Data};
-    use crate::expression_engine::datamodel::RFsmExpressionDatamodel;
+    use crate::datamodel::expression_engine::RFsmExpressionDatamodel;
     use crate::expression_engine::expressions::ExpressionResult;
     use crate::expression_engine::parser::ExpressionParser;
     use crate::init_logging;

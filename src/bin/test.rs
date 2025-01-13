@@ -6,27 +6,27 @@ use std::println as debug;
 #[cfg(all(feature = "Debug", feature = "EnvLog"))]
 use log::debug;
 
-use rfsm::fsm::Fsm;
+use rufsm::fsm::Fsm;
 #[cfg(feature = "xml")]
-use rfsm::scxml_reader;
+use rufsm::scxml_reader;
 #[cfg(feature = "xml")]
-use rfsm::scxml_reader::INCLUDE_PATH_ARGUMENT_OPTION;
+use rufsm::scxml_reader::INCLUDE_PATH_ARGUMENT_OPTION;
 #[cfg(feature = "json-config")]
-use rfsm::test::load_json_config;
+use rufsm::test::load_json_config;
 #[cfg(feature = "yaml-config")]
-use rfsm::test::load_yaml_config;
-use rfsm::test::{abort_test, load_fsm, run_test, TestSpecification, TestUseCase};
+use rufsm::test::load_yaml_config;
+use rufsm::test::{abort_test, load_fsm, run_test, TestSpecification, TestUseCase};
 #[cfg(feature = "Trace")]
-use rfsm::tracer::{TraceMode, TRACE_ARGUMENT_OPTION};
+use rufsm::tracer::{TraceMode, TRACE_ARGUMENT_OPTION};
 
 #[cfg(feature = "Debug")]
-use rfsm::get_features;
-use rfsm::init_logging;
+use rufsm::get_features;
+use rufsm::init_logging;
 
 #[cfg(feature = "TraceServer")]
-use rfsm::remote_tracer::run_trace_server;
+use rufsm::remote_tracer::run_trace_server;
 #[cfg(feature = "TraceServer")]
-use rfsm::remote_tracer::TRACE_SERVER_ARGUMENT_OPTION;
+use rufsm::remote_tracer::TRACE_SERVER_ARGUMENT_OPTION;
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
@@ -42,7 +42,7 @@ async fn main() {
     }
 
     #[allow(unused_variables)]
-    let (named_opt, final_args) = rfsm::get_arguments(&[
+    let (named_opt, final_args) = rufsm::get_arguments(&[
         #[cfg(feature = "Trace")]
         &TRACE_ARGUMENT_OPTION,
         #[cfg(feature = "TraceServer")]
