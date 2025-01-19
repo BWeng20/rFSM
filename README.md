@@ -19,18 +19,19 @@ For the detailed design, see [SW Design](SW_Design.md)
 
 The main functional feature switches of the project:
 
-| Name                      | Description                                                                                                     | Related crates       | Impact on Size<br/>of Release Build |
-|---------------------------|-----------------------------------------------------------------------------------------------------------------|----------------------|-------------------------------------|
-| ECMAScriptModel           | Adds an EMCAScript datamodel implementation.                                                                    | boa_engine           | +&#160;~&#160;10.25&#160;MiB        |
-| xml                       | Enables reading SCXML (xml) files.                                                                              | quick-xml, ureq, url | +&#160;~&#160;2.07&#160;MiB           |
-| RfsmExpressionModel       | Adds a datamodel implementation based on the internal Expression-Engine.                                        |                      | +&#160;~&#160;0.09&#160;MiB         |
-| serializer                | Support for reading/writing FSMs in a property binary format - as alternative to xml.                           |                      | +&#160;~&#160;0.1 MiB               |
-| BasicHttpEventIOProcessor | Adds an implementation of BasicHttpEventIOProcessor                                                             | rocket, ureq         | +&#160;~&#160;4.97 MiB              |
-| json-config               | The test tool can read configurations in JSON.                                                                  | serde_json           | +&#160;~&#160;0.003&#160;MiB        |
-| yaml-config               | The test tool can read configurations in YAML.                                                                  | yaml-rust            | -&#160;~&#160;0.001&#160;MiB        |
-| EnvLog                    | The crate "env_log" is used as "log" implementation and for internal logging. Otherwise `std::println` is used. | env_log              | +&#160;~&#160;1.21&#160;MiB         |
-| TraceServer               | Enables Remote Trace Server.                                                                                    |                      | _- not finished -_                  |
-Remind, that the features share dependencies, so the resulting size of the combined features is less than the sum of the individual features.  
+| Name                      | Description                                                                                                     | Related crates       | Impact on Size<br/>of Release Build[^1] |
+|---------------------------|-----------------------------------------------------------------------------------------------------------------|----------------------|-----------------------------------------|
+| ECMAScriptModel           | Adds an EMCAScript datamodel implementation.                                                                    | boa_engine           | +&#160;~&#160;10.25&#160;MiB            |
+| xml                       | Enables reading SCXML (xml) files.                                                                              | quick-xml, ureq, url | +&#160;~&#160;2.07&#160;MiB             |
+| RfsmExpressionModel       | Adds a datamodel implementation based on the internal Expression-Engine.                                        |                      | +&#160;~&#160;0.09&#160;MiB             |
+| serializer                | Support for reading/writing FSMs in a property binary format - as alternative to xml.                           |                      | +&#160;~&#160;0.1 MiB                   |
+| BasicHttpEventIOProcessor | Adds an implementation of BasicHttpEventIOProcessor                                                             | rocket, ureq         | +&#160;~&#160;4.97 MiB                  |
+| json-config               | The test tool can read configurations in JSON.                                                                  | serde_json           | +&#160;~&#160;0.003&#160;MiB            |
+| yaml-config               | The test tool can read configurations in YAML.                                                                  | yaml-rust            | -&#160;~&#160;0.001&#160;MiB            |
+| EnvLog                    | The crate "env_log" is used as "log" implementation and for internal logging. Otherwise `std::println` is used. | env_log              | +&#160;~&#160;1.21&#160;MiB             |
+| TraceServer               | Enables Remote Trace Server.                                                                                    |                      | _- not finished -_                      |
+
+[^1] Remind, that the features share dependencies, so the resulting size of the combined features is less than the sum of the individual features.  
 
 A minimal feature set for a MVP is 
  + RfsmExpressionModel - _Minimalistic Datamodel using an expression-language_
@@ -44,9 +45,9 @@ This leads to a minimal functional binary of ~1.4 MiB in size.</br>
 
 | Name                      | Description                                                              | Related crates                                            | Impact on Size<br/>of Release Build |
 |---------------------------|--------------------------------------------------------------------------|-----------------------------------------------------------|-------------------------------------|
-| Trace_Method              | Enables tracing of methods calls in the FSM.                             |                                                           | [^1]                                |
-| Trace_State               | Enables tracing of state changes in the FSM.                             |                                                           | [^1]                                |
-| Trace_Event               | Enables tracing of events in the FSM.                                    |                                                           | [^1]                                |
+| Trace_Method              | Enables tracing of methods calls in the FSM.                             |                                                           | [^2]                                |
+| Trace_State               | Enables tracing of state changes in the FSM.                             |                                                           | [^2]                                |
+| Trace_Event               | Enables tracing of events in the FSM.                                    |                                                           | [^2]                                |
 | Debug_Reader              | Enables debug output in the SCXML reader (a lot).                        |                                                           | _don't use it!_                     |
 | Debug                     | Enables additional debug (to fnd errors).                                |                                                           | _don't use it!_                     |
 
@@ -54,7 +55,7 @@ This leads to a minimal functional binary of ~1.4 MiB in size.</br>
 The trace options <i>Trace_xxx</i> still needed to be activated during runtime by settings the trace-mode.
 If none of the <i>Trace_xxx</i> features are used, "Tracer" module is completely removed.
 
-[^1]: If any of the "Trace_XXXX" features is turned on, the release build will get ~ 0.03 MiB larger. 
+[^2]: If any of the "Trace_XXXX" features is turned on, the release build will get ~ 0.03 MiB larger. 
 
 ## Tracer
 
