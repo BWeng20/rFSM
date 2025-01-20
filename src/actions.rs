@@ -1,5 +1,5 @@
-//! Added custom actions \
-//! As reference each type and method has the w3c description as documentation.\
+//! This module provides an API to add custom methods to the datamodel.\
+//! If the datamodel supports it, these Actions can be invoked from script and expressions.
 
 #![allow(clippy::doc_lazy_continuation)]
 #![allow(dead_code)]
@@ -22,6 +22,7 @@ pub type ActionMap = HashMap<String, Box<dyn Action>>;
 
 pub type ActionLock<'a> = MutexGuard<'a, ActionMap>;
 
+/// Maintains am Arc to the map of actions.
 #[derive(Default)]
 pub struct ActionWrapper {
     pub actions: Arc<Mutex<ActionMap>>,
