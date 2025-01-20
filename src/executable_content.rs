@@ -575,7 +575,9 @@ impl ExecutableContent for SendParameters {
 
         // A conformant document MUST NOT specify "namelist" or <param> with <content>.
         if self.content.is_some() {
-            content = datamodel.evaluate_content(&self.content);
+            if let Some(content_data) = datamodel.evaluate_content(&self.content) {
+                content = Some(content_data.lock().unwrap().clone())
+            }
         } else {
             datamodel.evaluate_params(&self.params, &mut data_vec);
             for name in self.name_list.as_slice() {

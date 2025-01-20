@@ -1,5 +1,6 @@
-//! Event I/O processors Base.\
-//! See [W3C:The Event I/O Processors](/doc/W3C_SCXML_2024_07_13/index.html#eventioprocessors).\
+//! Event I/O processors Base.
+//! For details about the concept see [W3C:The Event I/O Processors](doc/W3C_SCXML_2024_07_13/index.html#eventioprocessors).\
+//! This module provides a trait to implement Event-I/O-Processors and contains some implementations.
 
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -45,7 +46,7 @@ impl ExternalQueueContainer {
 }
 
 /// Trait for Event I/O Processors. \
-/// See /doc/W3C_SCXML_2024_07_13/index.html#eventioprocessors
+/// See [../../../doc/W3C_SCXML_2024_07_13/index.html#eventioprocessors].
 /// As the I/O Processors hold session related data, an instance of this trait must be bound to one session,
 /// but may share backends with other sessions, e.g. a http server.
 pub trait EventIOProcessor: ToAny + Debug + Send {

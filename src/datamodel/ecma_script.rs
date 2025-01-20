@@ -591,7 +591,7 @@ impl Datamodel for ECMAScriptDatamodel {
         let data_value = match &event.param_values {
             None => match &event.content {
                 None => JsValue::Undefined,
-                Some(c) => self.data_arc_to_js(c),
+                Some(c) => self.data_value_to_js(c),
             },
             Some(pv) => {
                 let mut data = Vec::with_capacity(pv.len());

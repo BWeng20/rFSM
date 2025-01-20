@@ -1,4 +1,4 @@
-//! Implementation of a simple expression parser.
+//! Implementation of logic behind the expression language.
 
 use std::collections::HashMap;
 use std::fmt::Debug;

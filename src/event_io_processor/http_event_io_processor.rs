@@ -1,4 +1,4 @@
-//! I/O Processor implementation for type "http://www.w3.org/TR/scxml/#BasicHTTPEventProcessor".
+//! I/O Processor implementation for type <http://www.w3.org/TR/scxml/#BasicHTTPEventProcessor>.
 //! Included if feature "BasicHttpEventIOProcessor" is enabled.\
 //! See [W3C:SCXML - Basic HTTP Event I/O Processor](/doc/W3C_SCXML_2024_07_13/index.html#BasicHTTPEventProcessor).
 
@@ -24,6 +24,8 @@ use crate::fsm::{Event, ParamPair, SessionId};
 use crate::fsm_executor::ExecutorStateArc;
 
 pub const SCXML_EVENT_NAME: &str = "_scxmleventname";
+pub const SCXML_EVENT_CONTENT: &str = "_content";
+
 
 /// IO Processor to server basic http request. \
 /// See /doc/W3C_SCXML_2024_07_13/index.html#BasicHTTPEventProcessor \
@@ -52,17 +54,6 @@ fn rocket_receive_event(
 ) -> (rocket::http::Status, String) {
     let form_data = params.into_inner();
 
-    let event_name = match form_data.get(SCXML_EVENT_NAME) {
-        None => {
-            return (
-                rocket::http::Status::BadRequest,
-                format!("Missing argument {}", SCXML_EVENT_NAME),
-            );
-        }
-        Some(v) => v.clone(),
-    };
-
-
     match executor_state.arc.lock() {
         Ok(state) => match state.sessions.get(&sessionid) {
             None => (
@@ -72,10 +63,15 @@ fn rocket_receive_event(
             Some(scxml_session) => {
                 let mut event = Event::new_external();
 
+                let mut event_name : Option<String> = None;
+
                 for (name, value) in form_data {
                     match name.as_str() {
                         SCXML_EVENT_NAME => {
-                            event.name = value;
+                            event_name = Some(value);
+                        }
+                        SCXML_EVENT_CONTENT => {
+                            event.content = Some( Data::String(value));
                         }
                         _ => {
                             if event.param_values.is_none() {
@@ -86,23 +82,35 @@ fn rocket_receive_event(
                         }
                     }
                 }
-                debug!("Sending HTTP Event '{}' [{:?}]", event, event.param_values);
-                match scxml_session.sender.send(Box::new(event)) {
-                    Ok(_) => {
-                        (rocket::http::Status::Ok, "Event send".to_string())
+                match event_name {
+                    None => {
+                        return (
+                            rocket::http::Status::BadRequest,
+                            format!("Missing argument '{}'", SCXML_EVENT_NAME),
+                        );
                     }
-                    Err(err) => {
-                        error!("Failed to Send Event {}. {}", event_name, err);
-                        (
-                            rocket::http::Status::InternalServerError,
-                            "Can't send".to_string(),
-                        )
+                    Some(name) => {
+                        event.name = name;
+
+                        debug!("Sending HTTP Event '{}' [{:?}]", event, event.param_values);
+                        match scxml_session.sender.send(Box::new(event)) {
+                            Ok(_) => {
+                                (rocket::http::Status::Ok, "Event send".to_string())
+                            }
+                            Err(err) => {
+                                error!("Failed to Send Event: {}", err);
+                                (
+                                    rocket::http::Status::InternalServerError,
+                                    "Can't send".to_string(),
+                                )
+                            }
+                        }
                     }
                 }
             }
         },
         Err(_) => {
-            error!("Can't send {} because lock failed.", event_name);
+            error!("Can't send event because lock failed.");
             (
                 rocket::http::Status::InternalServerError,
                 "Can't lock".to_string(),
@@ -307,6 +315,14 @@ impl EventIOProcessor for BasicHTTPEventIOProcessor {
         Box::new(b)
     }
 
+    /// *W3C says*:\
+    /// B.2.9 Serialization\
+    /// In certain circumstances, e.g. when including data in events sent via the BasicHTTP Event I/O Processor,
+    /// the SCXML Processor is required to serialize data from the ECMAScript data model for transmission to a remote entity.
+    /// In such cases, if the Processor supports JSON, and is able to serialize the data in sufficient detail to allow its
+    /// reconstruction, the Processor MUST serialize the data to JSON. Otherwise, the Processor MAY use platform-specific
+    /// methods (including JSON despite the loss of information) to serialize the data.\
+    /// The Processor SHOULD provide a warning if the serialization entails loss of information or if it is unable to serialize at all.
     fn send(&mut self, _global: &GlobalDataArc, target: &str, event: Event) -> bool {
 
         #[cfg(feature = "Debug")]
@@ -318,6 +334,9 @@ impl EventIOProcessor for BasicHTTPEventIOProcessor {
             for e in parameters {
                 data.push((e.name.as_str(), e.value.to_string()));
             }
+        }
+        if let Some(content) = &event.content {
+            data.push(("_content", content.to_string()));
         }
         // TODO: no other way to convert?
         let form_data: Vec<(&str, &str)> = data.iter()

@@ -32,7 +32,7 @@ pub const SCXML_TARGET_SESSION_ID_PREFIX: &str = "#_scxml_";
 pub const SCXML_TARGET_PARENT: &str = "#_parent";
 
 /// SCXML Processors specific target:\
-/// If the target is the special term '#_invokeid', where invokeid is the invokeid of an SCXML session that the sending session has created by \<invoke\>,
+/// If the target is the special term '#_invokeid', where invokeid is the invokeid of an SCXML session that the sending session has created by &lt;invoke\>,
 /// the Processor must add the event to the external queue of that session.\
 /// This value is prefix of the other SCXML targets and need special care.
 pub const SCXML_TARGET_INVOKE_ID_PREFIX: &str = "#_";
@@ -112,11 +112,11 @@ impl EventIOProcessor for ScxmlEventIOProcessor {
     ///  system variable in the sending session.</li>
     /// <li>The 'origintype' field of the event raised in the receiving session must have the value "scxml".</li>
     /// </ul>
-    /// SCXML Processors must support the following special targets for \<send\>:<ul>
+    /// SCXML Processors must support the following special targets for &lt;send\>:<ul>
     /// <li>#_internal. If the target is the special term '#_internal', the Processor must add the event to the internal event queue of the sending session.</li>
     /// <li>#_scxml_sessionid. If the target is the special term '#_scxml_sessionid', where sessionid is the id of an SCXML session that is accessible to the Processor, the Processor must add the event to the external queue of that session. The set of SCXML sessions that are accessible to a given SCXML Processor is platform-dependent.</li>
-    /// <li>#_parent. If the target is the special term '#_parent', the Processor must add the event to the external event queue of the SCXML session that invoked the sending session, if there is one. See 6.4 <invoke> for details.</li>
-    /// <li>#_invokeid. If the target is the special term '#_invokeid', where invokeid is the invokeid of an SCXML session that the sending session has created by <invoke>, the Processor must add the event to the external queue of that session. See 6.4 <invoke> for details.</li>
+    /// <li>#_parent. If the target is the special term '#_parent', the Processor must add the event to the external event queue of the SCXML session that invoked the sending session, if there is one. See 6.4 &lt;invoke\> for details.</li>
+    /// <li>#_invokeid. If the target is the special term '#_invokeid', where invokeid is the invokeid of an SCXML session that the sending session has created by &lt;invoke\>, the Processor must add the event to the external queue of that session. See 6.4 &lt;invoke\> for details.</li>
     /// <li>If neither the 'target' nor the 'targetexpr' attribute is specified, the SCXML Processor must add the event to the external event queue of the sending session.</li>
     /// </ul>
     fn send(&mut self, global: &GlobalDataArc, target: &str, mut event: Event) -> bool {

@@ -9,7 +9,7 @@ use lazy_static::lazy_static;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::Hash;
-use std::ops::DerefMut;
+use std::ops::{DerefMut};
 #[cfg(test)]
 use std::println as error;
 #[cfg(test)]
@@ -735,7 +735,7 @@ pub struct Event {
     pub param_values: Option<Vec<ParamPair>>,
 
     /// Content from \<content\> element.
-    pub content: Option<DataArc>,
+    pub content: Option<Data>,
 }
 
 impl Display for Event {
@@ -776,7 +776,7 @@ impl Event {
         prefix: &str,
         id: &str,
         data_params: Option<Vec<ParamPair>>,
-        data_content: Option<DataArc>,
+        data_content: Option<Data>,
         event_type: EventType,
     ) -> Event {
         Event {
@@ -2338,7 +2338,13 @@ impl Fsm {
                         None => {}
                         Some(done_data) => {
                             datamodel.evaluate_params(&done_data.params, &mut name_values);
-                            content = datamodel.evaluate_content(&done_data.content);
+                            content =
+                                match datamodel.evaluate_content(&done_data.content) {
+                                    None => { None }
+                                    Some(data) => {
+                                        Some(data.lock().unwrap().clone())
+                                    }
+                                };
                         }
                     }
                     let param_values = if name_values.is_empty() {

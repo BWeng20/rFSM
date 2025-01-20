@@ -1,4 +1,4 @@
-//! Implements the SCXML Data model for rFSM Expressions.\
+//! Implements the SCXML Data model for rFSM Expressions.
 
 use crate::actions::{Action, ActionWrapper};
 use log::error;
@@ -476,9 +476,7 @@ impl Datamodel for RFsmExpressionDatamodel {
         let data_value = match &event.param_values {
             None => match &event.content {
                 None => self.null_data.clone(),
-                Some(c) => {
-                    let cd_guard = c.lock().unwrap();
-                    let cd = cd_guard.deref();
+                Some(cd) => {
                     match self.resolve_source_data(cd) {
                         Ok(val) => val,
                         Err(err) => {

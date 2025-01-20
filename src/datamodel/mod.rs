@@ -43,7 +43,7 @@ pub const NULL_DATAMODEL_LC: &str = "null";
 pub const SCXML_INVOKE_TYPE: &str = "http://www.w3.org/TR/scxml";
 
 /// W3C: Processors MAY define short form notations as an authoring convenience
-/// (e.g., "scxml" as equivalent to http://www.w3.org/TR/scxml/).
+/// (e.g., "scxml" as equivalent to <http://www.w3.org/TR/scxml> ).
 pub const SCXML_INVOKE_TYPE_SHORT: &str = "scxml";
 
 pub const SCXML_EVENT_PROCESSOR: &str = "http://www.w3.org/TR/scxml/#SCXMLEventProcessor";
@@ -377,8 +377,9 @@ pub trait Datamodel {
     }
 }
 
+/// The "Null" Datamodel as specified by W3C. A minimal model without any data.
 /// ## W3C says:
-/// ###B.1 The Null Data Model
+/// ### B.1 The Null Data Model
 /// The value "null" for the 'datamodel' attribute results in an absent or empty data model. In particular:
 /// - B.1.1 Data Model
 ///
@@ -410,6 +411,7 @@ pub struct NullDatamodel {
     pub actions: ActionMap,
 }
 
+/// The Factory to create a new Null-Datamodel in case an FSM uses it.
 pub struct NullDatamodelFactory {}
 
 impl DatamodelFactory for NullDatamodelFactory {
@@ -1104,6 +1106,7 @@ impl Default for Data {
 
 pub const DATA_FLAG_READONLY: u8 = 1u8;
 
+/// Wrapper that maintains an Arx to a Data element.
 #[derive(Clone)]
 pub struct DataArc {
     pub arc: Arc<Mutex<Data>>,
@@ -1166,6 +1169,7 @@ pub fn create_data_arc(data: Data) -> DataArc {
     }
 }
 
+/// Wrapper to maintain the map of current data elements for one FSM.
 #[derive(Debug)]
 pub struct DataStore {
     pub map: HashMap<String, DataArc>,
