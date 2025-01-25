@@ -16,6 +16,11 @@ exclude = ["/examples", "/schema", ".*", "/doc", "/test", "!/test/w3c/README.md"
 strip = true  # Automatically strip symbols from the binary.
 
 [[bin]]
+name = "eval"
+path = "src/bin/eval_expression.rs"
+required-features = [ "ExpressionEngine" ]
+
+[[bin]]
 name = "fsm"
 
 [[bin]]

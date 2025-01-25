@@ -102,6 +102,21 @@ SCXML aldo requires that system variables are read-only. To support this, the Da
 Assignments to a read-only marked data will fail. <br/>
 There is currently no way to set this flag from the expression language. 
 
+#### Conditional (ternary) operator
+
+The language has no ternary operator, but you can simulate it with a map:  
+
+```
+  {true:'this is correct', false:'this is wrong'}[ condition ]
+```
+
+Example:
+```
+  {true:'is One', false:'is not 1'}[ A == 1 ]
+```
+
+Will return "_is not One_" if "_A_" is not 1.
+
 
 ### Custom Actions
 
