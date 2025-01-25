@@ -1,4 +1,4 @@
-//! Defaults of the protocol.\
+//! Constants, used in the protocol.
 
 pub const FSM_PROTOCOL_TYPE_PROTOCOL_VERSION: &str = "DwP1.1";
 pub const FSM_PROTOCOL_TYPE_OPT_STRING_NONE: u8 = 0x10;

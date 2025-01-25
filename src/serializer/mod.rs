@@ -1,3 +1,5 @@
+//! Support for reading/writing FSMs in a property binary ruFsm format - as alternative to xml.
+
 pub mod default_protocol_definitions;
 pub mod default_protocol_reader;
 pub mod default_protocol_writer;

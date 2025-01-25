@@ -13,7 +13,8 @@ use std::sync::{Arc, Mutex};
 use log::info;
 
 use crate::fsm::{Event, OrderedSet, State};
-use crate::{fsm, ArgOption};
+use crate::fsm;
+use crate::common::ArgOption;
 
 /// Trace mode for FSM Tracer.
 #[derive(Debug, Clone, PartialEq, Copy, Hash, Eq)]

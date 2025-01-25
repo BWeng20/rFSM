@@ -35,6 +35,13 @@ pub mod ecma_script;
 #[cfg(feature = "RfsmExpressionModel")]
 pub mod expression_engine;
 
+/// Gets the global data store from datamodel.
+macro_rules! get_global {
+    ($x:expr) => {
+        $x.global().lock().unwrap()
+    };
+}
+
 pub const DATAMODEL_OPTION_PREFIX: &str = "datamodel:";
 
 pub const NULL_DATAMODEL: &str = "NULL";
@@ -93,14 +100,6 @@ pub const EVENT_VARIABLE_FIELD_DATA: &str = "data";
 pub trait DatamodelFactory: Send {
     /// Create a NEW datamodel.
     fn create(&mut self, global_data: GlobalDataArc, options: &HashMap<String, String>) -> Box<dyn Datamodel>;
-}
-
-/// Gets the global data store from datamodel.
-#[macro_export]
-macro_rules! get_global {
-    ($x:expr) => {
-        $x.global().lock().unwrap()
-    };
 }
 
 pub type GlobalDataLock<'a> = MutexGuard<'a, GlobalData>;

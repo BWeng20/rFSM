@@ -16,7 +16,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, mem, str, string::String};
 
 use crate::datamodel::{create_data_arc, Data, SourceCode};
-use crate::ArgOption;
+use crate::common::ArgOption;
 #[cfg(feature = "Debug_Reader")]
 #[cfg(not(test))]
 use log::debug;

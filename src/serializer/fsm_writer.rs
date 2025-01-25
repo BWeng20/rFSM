@@ -1,5 +1,4 @@
-//! Module to write a persistent binary version of a Fsm.\
-//! The format is independent of the platform byte-order
+//! Module to write the binary ruFsm format.\
 
 use crate::datamodel::DataArc;
 #[cfg(feature = "Debug_Serializer")]

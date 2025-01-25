@@ -23,7 +23,6 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::{fmt, thread};
-
 #[cfg(not(test))]
 use log::error;
 
@@ -55,8 +54,14 @@ use crate::datamodel::expression_engine::{RFsmExpressionDatamodelFactory, RFSM_E
 
 use crate::fsm::BindingType::{Early, Late};
 use crate::fsm_executor::FsmExecutor;
-use crate::get_global;
 use crate::event_io_processor::scxml_event_io_processor::{SCXML_EVENT_PROCESSOR_SHORT_TYPE, SCXML_TARGET_SESSION_ID_PREFIX};
+
+/// Gets the global data store from datamodel.
+macro_rules! get_global {
+    ($x:expr) => {
+        $x.global().lock().unwrap()
+    };
+}
 
 #[cfg(feature = "Trace")]
 use crate::tracer::create_tracer;
@@ -3768,8 +3773,9 @@ mod tests {
 
     #[cfg(all(feature = "ECMAScriptModel", feature = "xml"))]
     use crate::test::run_test_manual_with_send;
+
     #[cfg(all(feature = "ECMAScriptModel", feature = "xml"))]
-    use crate::Event;
+    use crate::fsm::Event;
 
     #[cfg(feature = "ECMAScriptModel")]
     #[cfg(feature = "xml")]

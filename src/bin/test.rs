@@ -20,8 +20,8 @@ use rufsm::test::{abort_test, load_fsm, run_test, TestSpecification, TestUseCase
 use rufsm::tracer::{TraceMode, TRACE_ARGUMENT_OPTION};
 
 #[cfg(feature = "Debug")]
-use rufsm::get_features;
-use rufsm::init_logging;
+use rufsm::common::get_features;
+use rufsm::common::init_logging;
 
 #[cfg(feature = "TraceServer")]
 use rufsm::remote_tracer::run_trace_server;
@@ -42,7 +42,7 @@ async fn main() {
     }
 
     #[allow(unused_variables)]
-    let (named_opt, final_args) = rufsm::get_arguments(&[
+    let (named_opt, final_args) = rufsm::common::get_arguments(&[
         #[cfg(feature = "Trace")]
         &TRACE_ARGUMENT_OPTION,
         #[cfg(feature = "TraceServer")]

@@ -31,7 +31,7 @@ use std::{println as error, println as info};
 #[cfg(all(not(test), feature = "EnvLog"))]
 use log::{error, info};
 
-use crate::ArgOption;
+use crate::common::ArgOption;
 use boa_engine::context::ContextBuilder;
 use boa_engine::object::builtins::{JsArray, JsMap};
 use boa_engine::object::ObjectInitializer;

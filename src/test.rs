@@ -1,3 +1,5 @@
+//! Functions for automated test of FSMs.
+
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;

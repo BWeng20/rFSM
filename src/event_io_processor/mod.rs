@@ -12,7 +12,6 @@ use log::debug;
 use crate::datamodel::{Datamodel, GlobalDataArc, ToAny};
 use crate::fsm::SessionId;
 use crate::fsm::{Event, Fsm, EVENT_CANCEL_SESSION};
-use crate::get_global;
 
 #[cfg(feature = "BasicHttpEventIOProcessor")]
 pub mod http_event_io_processor;
@@ -59,7 +58,7 @@ pub trait EventIOProcessor: ToAny + Debug + Send {
     fn get_external_queues(&mut self) -> &mut ExternalQueueContainer;
 
     fn add_fsm(&mut self, _fsm: &Fsm, datamodel: &mut dyn Datamodel) {
-        let global = get_global!(datamodel);
+        let global = datamodel.global().lock().unwrap();
         self.get_external_queues()
             .fsms
             .insert(global.session_id, global.externalQueue.sender.clone());

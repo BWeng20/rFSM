@@ -1,4 +1,4 @@
-//! Protocol to read a persistent binary version of a Fsm.
+//! Low level protocol used to read the binary ruFsm format.
 
 use crate::datamodel::{create_data_arc, Data, DataArc};
 use std::io::Read;

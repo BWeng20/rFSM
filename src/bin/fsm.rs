@@ -14,8 +14,8 @@ use rufsm::actions::ActionWrapper;
 use rufsm::fsm::{Event, EventType};
 use rufsm::fsm_executor::FsmExecutor;
 #[cfg(feature = "Trace")]
-use rufsm::handle_trace;
-use rufsm::init_logging;
+use rufsm::common::handle_trace;
+use rufsm::common::init_logging;
 #[cfg(feature = "xml")]
 use rufsm::scxml_reader::INCLUDE_PATH_ARGUMENT_OPTION;
 #[cfg(feature = "Trace")]
@@ -102,7 +102,7 @@ async fn main() {
 async fn main_internal() {
     init_logging();
 
-    let (named_opt, final_args) = rufsm::get_arguments(&[
+    let (named_opt, final_args) = rufsm::common::get_arguments(&[
         #[cfg(feature = "Trace")]
         &TRACE_ARGUMENT_OPTION,
         #[cfg(feature = "xml")]

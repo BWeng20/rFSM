@@ -19,12 +19,8 @@ use crate::datamodel::{str_to_source, Data, Datamodel, ToAny, SCXML_EVENT_PROCES
 
 use crate::expression_engine::lexer::ExpressionLexer;
 
-use crate::fsm::{
-    opt_vec_to_string, vec_to_string, CommonContent, ExecutableContentId, Fsm, ParamPair, Parameter,
-    PLATFORM_ID_COUNTER,
-};
+use crate::fsm::{opt_vec_to_string, vec_to_string, CommonContent, ExecutableContentId, Fsm, ParamPair, Parameter, PLATFORM_ID_COUNTER, Event, EventType};
 use crate::event_io_processor::scxml_event_io_processor::SCXML_TARGET_INTERNAL;
-use crate::{get_global, Event, EventType};
 
 pub const TARGET_SCXML_EVENT_PROCESSOR: &str = "http://www.w3.org/TR/scxml/#SCXMLEventProcessor";
 
@@ -49,6 +45,14 @@ pub const TYPE_NAMES: [&str; 9] = [
     "cancel",
     "assign",
 ];
+
+/// Gets the global data store from datamodel.
+macro_rules! get_global {
+    ($x:expr) => {
+        $x.global().lock().unwrap()
+    };
+}
+
 
 pub trait ExecutableContent: ToAny + Debug + Send {
     fn execute(&self, datamodel: &mut dyn Datamodel, fsm: &Fsm) -> bool;
@@ -637,7 +641,7 @@ impl ExecutableContent for SendParameters {
         };
         let type_val_str = type_val_string.as_str();
 
-        let event = Event {
+        let event = Event{
             name: event_name.lock().unwrap().to_string(),
             etype: EventType::external,
             sendid: send_id.clone(),

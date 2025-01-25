@@ -1,4 +1,4 @@
-//! Protocol to write a persistent binary version of a Fsm.
+//! Low level protocol used to write the binary ruFsm format.
 
 use crate::datamodel::{Data, DataArc};
 use std::io::Write;

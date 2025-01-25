@@ -652,7 +652,7 @@ mod tests {
     use crate::datamodel::expression_engine::RFsmExpressionDatamodel;
     use crate::expression_engine::expressions::ExpressionResult;
     use crate::expression_engine::parser::ExpressionParser;
-    use crate::init_logging;
+    use crate::common::init_logging;
     use std::collections::HashMap;
 
     #[test]

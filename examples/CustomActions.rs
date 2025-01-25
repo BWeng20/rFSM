@@ -3,7 +3,7 @@ use rufsm::actions::{Action, ActionWrapper};
 use rufsm::datamodel::Data;
 use rufsm::fsm::GlobalData;
 use rufsm::fsm_executor::FsmExecutor;
-use rufsm::init_logging;
+use rufsm::common::init_logging;
 use std::process::exit;
 
 #[cfg(feature = "Trace")]
