@@ -2343,13 +2343,7 @@ impl Fsm {
                         None => {}
                         Some(done_data) => {
                             datamodel.evaluate_params(&done_data.params, &mut name_values);
-                            content =
-                                match datamodel.evaluate_content(&done_data.content) {
-                                    None => { None }
-                                    Some(data) => {
-                                        Some(data.lock().unwrap().clone())
-                                    }
-                                };
+                            content = datamodel.evaluate_content(&done_data.content).map(|data| data.lock().unwrap().clone());
                         }
                     }
                     let param_values = if name_values.is_empty() {

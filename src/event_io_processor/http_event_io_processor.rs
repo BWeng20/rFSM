@@ -84,10 +84,8 @@ fn rocket_receive_event(
                 }
                 match event_name {
                     None => {
-                        return (
-                            rocket::http::Status::BadRequest,
-                            format!("Missing argument '{}'", SCXML_EVENT_NAME),
-                        );
+                        (rocket::http::Status::BadRequest,
+                         format!("Missing argument '{}'", SCXML_EVENT_NAME))
                     }
                     Some(name) => {
                         event.name = name;
