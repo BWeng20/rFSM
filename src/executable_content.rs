@@ -435,11 +435,6 @@ impl ExecutableContent for ForEach {
         } else {
             self.index.clone()
         };
-        #[cfg(feature = "Debug")]
-        {
-            debug!("ForEach::execute:");
-            datamodel.global().lock().unwrap().data.dump();
-        }
         datamodel.execute_for_each(&self.array, &self.item, &idx, &mut |datamodel| -> bool {
             if self.content != 0 {
                 for e in fsm.executableContent.get(&self.content).unwrap() {

@@ -1191,13 +1191,9 @@ impl DataStore {
         #[allow(clippy::manual_map)]
         match self.map.get(key) {
             None => {
-                #[cfg(feature = "Debug")]
-                debug!("DataStore::Get: '{}' -> Not found", key);
                 None
             }
             Some(v) => {
-                #[cfg(feature = "Debug")]
-                debug!("DataStore::Get: '{}' -> {}", key, v);
                 Some(v.clone())
             }
         }
@@ -1241,13 +1237,5 @@ impl DataStore {
                 x.insert(data);
             }
         }
-    }
-
-    pub fn dump(&self) {
-        debug!("--- Current Data Set");
-        for (key, data) in &self.map {
-            debug!("\t{}: {}", key, data);
-        }
-        debug!("--------------------")
     }
 }

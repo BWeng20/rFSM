@@ -218,14 +218,10 @@ impl Expression for ExpressionVariable {
     fn execute(&self, context: &mut GlobalDataLock, allow_undefined: bool) -> ExpressionResult {
         match context.data.get(&self.name) {
             Some(value) => {
-                #[cfg(feature = "Debug")]
-                debug!("ExpressionVariable::execute: {} = {}", self.name, value);
                 Ok(value.clone())
             }
             None => {
                 if allow_undefined {
-                    #[cfg(feature = "Debug")]
-                    debug!("ExpressionVariable::execute: init {} = None", self.name);
                     context.data.set_undefined(self.name.clone(), Data::None());
                     Ok(context.data.get(&self.name).unwrap())
                 } else {
@@ -527,11 +523,6 @@ impl ExpressionOperator {
 
 impl Expression for ExpressionOperator {
     fn execute(&self, context: &mut GlobalDataLock, allow_undefined: bool) -> ExpressionResult {
-        #[cfg(feature = "Debug")]
-        {
-            debug!("ExpressionOperator::execute:");
-            context.data.dump();
-        }
         let left_result = match self.left.execute(context, allow_undefined) {
             Err(err) => {
                 return Err(err);
