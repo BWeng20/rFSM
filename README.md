@@ -59,10 +59,12 @@ If none of the <i>Trace_xxx</i> features are used, "Tracer" module is completely
 
 ## Tracer
 
-The Tracer module can be used to monitor events and transitions.<br/>
+The Tracer module can be used to monitor the FSM.<br/>
 
-The default-tracer simply prints the traced actions. If the Remote-Trace-Server is activated, the default-tracer is 
-replaced by a tracer that communicates via the Remote-Trace-Server with some remote-client.   
+The default-tracer simply prints the traced actions. If the Remote-Trace-Server-Feature is enabled, a Server is 
+started that can be used by remote-clients (_to be done_).
+
+The Tracer has different flags to control what is traced, see Enum [TraceMode](src/tracer.rs) for details.
 
 ## How To Use
 

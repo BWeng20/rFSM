@@ -77,12 +77,8 @@ the child/parent relationships in the model.
 
 ### Logging
 
-The project use crate "log". If the feature "EnvLog" is active, the crate "env_log" is used as "log" implementation.
-
-The module reader prints the SAX-events to "log::debug".\
-FSM methods, state transitions and output are traces via a trait "fsm::Tracer" with a default implementation that prints to "info".\
-The Tracer can be replaced by the using client by some other implementation, or it can be configured to print only specific information.
-The Tracer has different flags to control what is traced, see Enum [TraceMode](src/tracer.rs) for details.
+If the feature "EnvLog" is active, the crate "env_log" with `log::info/warn/debug/error` is used. 
+If "env_log" is not active, `std::println` is used instead.  
 
 The used log level of crate "log" can be controlled by environment variable "RUST_LOG", e.g. "RUST_LOG=debug".
 
