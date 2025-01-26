@@ -4,23 +4,17 @@
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::atomic::Ordering;
-#[cfg(test)]
-use std::{println as info, println as warn};
-
-use log::error;
 
 #[cfg(feature = "Debug")]
-use log::debug;
-
-#[cfg(not(test))]
-use log::{info, warn};
-
+use crate::common::debug;
+use crate::common::{error, info, warn};
 use crate::datamodel::{str_to_source, Data, Datamodel, ToAny, SCXML_EVENT_PROCESSOR};
-
-use crate::expression_engine::lexer::ExpressionLexer;
-
-use crate::fsm::{opt_vec_to_string, vec_to_string, CommonContent, ExecutableContentId, Fsm, ParamPair, Parameter, PLATFORM_ID_COUNTER, Event, EventType};
 use crate::event_io_processor::scxml_event_io_processor::SCXML_TARGET_INTERNAL;
+use crate::expression_engine::lexer::ExpressionLexer;
+use crate::fsm::{
+    opt_vec_to_string, vec_to_string, CommonContent, Event, EventType, ExecutableContentId, Fsm, ParamPair, Parameter,
+    PLATFORM_ID_COUNTER,
+};
 
 pub const TARGET_SCXML_EVENT_PROCESSOR: &str = "http://www.w3.org/TR/scxml/#SCXMLEventProcessor";
 
@@ -52,7 +46,6 @@ macro_rules! get_global {
         $x.global().lock().unwrap()
     };
 }
-
 
 pub trait ExecutableContent: ToAny + Debug + Send {
     fn execute(&self, datamodel: &mut dyn Datamodel, fsm: &Fsm) -> bool;
@@ -636,7 +629,7 @@ impl ExecutableContent for SendParameters {
         };
         let type_val_str = type_val_string.as_str();
 
-        let event = Event{
+        let event = Event {
             name: event_name.lock().unwrap().to_string(),
             etype: EventType::external,
             sendid: send_id.clone(),

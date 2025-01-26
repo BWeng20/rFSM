@@ -1,31 +1,28 @@
-//! I/O Processor implementation for type <http://www.w3.org/TR/scxml/#BasicHTTPEventProcessor>.
+//! I/O Processor implementation for type <http://www.w3.org/TR/scxml/#BasicHTTPEventProcessor>.\
+//! See [W3C:SCXML - Basic HTTP Event I/O Processor](/doc/W3C_SCXML_2024_07_13/index.html#BasicHTTPEventProcessor).\
 //! Included if feature "BasicHttpEventIOProcessor" is enabled.\
-//! See [W3C:SCXML - Basic HTTP Event I/O Processor](/doc/W3C_SCXML_2024_07_13/index.html#BasicHTTPEventProcessor).
+//! This implementation is based on Rocket, but can be used as template for implementations based on other frameworks.\
+//! The event input form is only added for test & de debugging and should not be used in production.
 
 use rocket::response::content::RawHtml;
-use rocket::{Config, routes};
 use rocket::{post, Shutdown};
 use rocket::{route, Request, Response};
+use rocket::{routes, Config};
 
+use rocket::http::ContentType;
+use rocket::response::Responder;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::net::IpAddr;
-#[cfg(test)]
-use std::{println as debug, println as info, println as error};
 
-#[cfg(not(test))]
-use log::{debug, error, info};
-use rocket::http::ContentType;
-use rocket::response::Responder;
-
-use crate::datamodel::{GlobalDataArc, BASIC_HTTP_EVENT_PROCESSOR, Data};
+use crate::common::{debug, error, info};
+use crate::datamodel::{Data, GlobalDataArc, BASIC_HTTP_EVENT_PROCESSOR};
 use crate::event_io_processor::{EventIOProcessor, ExternalQueueContainer};
 use crate::fsm::{Event, ParamPair, SessionId};
 use crate::fsm_executor::ExecutorStateArc;
 
 pub const SCXML_EVENT_NAME: &str = "_scxmleventname";
 pub const SCXML_EVENT_CONTENT: &str = "_content";
-
 
 /// IO Processor to server basic http request. \
 /// See /doc/W3C_SCXML_2024_07_13/index.html#BasicHTTPEventProcessor \
@@ -63,7 +60,7 @@ fn rocket_receive_event(
             Some(scxml_session) => {
                 let mut event = Event::new_external();
 
-                let mut event_name : Option<String> = None;
+                let mut event_name: Option<String> = None;
 
                 for (name, value) in form_data {
                     match name.as_str() {
@@ -71,30 +68,31 @@ fn rocket_receive_event(
                             event_name = Some(value);
                         }
                         SCXML_EVENT_CONTENT => {
-                            event.content = Some( Data::String(value));
+                            event.content = Some(Data::String(value));
                         }
                         _ => {
                             if event.param_values.is_none() {
                                 event.param_values = Some(Vec::new());
                             }
-                            let pair = ParamPair{ name, value: Data::String(value)};
+                            let pair = ParamPair {
+                                name,
+                                value: Data::String(value),
+                            };
                             event.param_values.as_mut().unwrap().push(pair);
                         }
                     }
                 }
                 match event_name {
-                    None => {
-                        (rocket::http::Status::BadRequest,
-                         format!("Missing argument '{}'", SCXML_EVENT_NAME))
-                    }
+                    None => (
+                        rocket::http::Status::BadRequest,
+                        format!("Missing argument '{}'", SCXML_EVENT_NAME),
+                    ),
                     Some(name) => {
                         event.name = name;
 
                         debug!("Sending HTTP Event '{}' [{:?}]", event, event.param_values);
                         match scxml_session.sender.send(Box::new(event)) {
-                            Ok(_) => {
-                                (rocket::http::Status::Ok, "Event send".to_string())
-                            }
+                            Ok(_) => (rocket::http::Status::Ok, "Event send".to_string()),
                             Err(err) => {
                                 error!("Failed to Send Event: {}", err);
                                 (
@@ -167,7 +165,7 @@ stroke-width=\"0.2\">fsm</text></g></svg>";
 fn rocket_welcome(execute_state: &rocket::State<ExecutorStateArc>) -> RawHtml<String> {
     let mut sessions = String::with_capacity(100);
 
-    if let Ok(es) =execute_state.lock() {
+    if let Ok(es) = execute_state.lock() {
         for k in es.sessions.keys() {
             sessions.push_str("<option value='");
             sessions.push_str(&k.to_string());
@@ -269,8 +267,12 @@ impl BasicHTTPEventIOProcessor {
 
         let server = rocket::custom(figment)
             .manage(es_clone)
-            .mount("/", routes![rocket_welcome, rocket_receive_event, rocket_get_favicon])
-            .ignite().await
+            .mount(
+                "/",
+                routes![rocket_welcome, rocket_receive_event, rocket_get_favicon],
+            )
+            .ignite()
+            .await
             .expect("server to launch");
         let shutdown = server.shutdown();
 
@@ -322,7 +324,6 @@ impl EventIOProcessor for BasicHTTPEventIOProcessor {
     /// methods (including JSON despite the loss of information) to serialize the data.\
     /// The Processor SHOULD provide a warning if the serialization entails loss of information or if it is unable to serialize at all.
     fn send(&mut self, _global: &GlobalDataArc, target: &str, event: Event) -> bool {
-
         #[cfg(feature = "Debug")]
         debug!("Send HTTP Event {}", event.name);
 
@@ -337,15 +338,15 @@ impl EventIOProcessor for BasicHTTPEventIOProcessor {
             data.push(("_content", content.to_string()));
         }
         // TODO: no other way to convert?
-        let form_data: Vec<(&str, &str)> = data.iter()
+        let form_data: Vec<(&str, &str)> = data
+            .iter()
             .map(|(name, value)| (*name, value.as_str()))
             .collect();
 
         let r = ureq::post(target).send_form(form_data.as_slice());
 
         match r {
-            Ok(_) => {
-            }
+            Ok(_) => {}
             Err(err) => {
                 error!("Failed to send to {}. {}", target, err);
             }

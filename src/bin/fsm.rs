@@ -11,11 +11,11 @@ use std::sync::mpsc::Sender;
 use std::{io, process, thread, time};
 
 use rufsm::actions::ActionWrapper;
-use rufsm::fsm::{Event, EventType};
-use rufsm::fsm_executor::FsmExecutor;
 #[cfg(feature = "Trace")]
 use rufsm::common::handle_trace;
 use rufsm::common::init_logging;
+use rufsm::fsm::{Event, EventType};
+use rufsm::fsm_executor::FsmExecutor;
 #[cfg(feature = "xml")]
 use rufsm::scxml_reader::INCLUDE_PATH_ARGUMENT_OPTION;
 #[cfg(feature = "Trace")]
@@ -92,13 +92,14 @@ async fn main() {
     main_internal().await;
 }
 
-/// Loads the specified FSM and prompts for Events.
+// If using rocket, we need to initialize tokio the rocket way
 #[cfg(feature = "rocket")]
 #[rocket::main]
 async fn main() {
     main_internal().await;
 }
 
+/// Loads the specified FSM and prompts for Events.
 async fn main_internal() {
     init_logging();
 

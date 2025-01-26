@@ -15,16 +15,16 @@ use std::sync::mpsc::{SendError, Sender};
 use std::sync::{Arc, LockResult, Mutex, MutexGuard};
 
 #[cfg(feature = "Debug")]
-use log::debug;
+use crate::common::debug;
 
 use crate::actions::ActionWrapper;
 use crate::datamodel::DATAMODEL_OPTION_PREFIX;
-use crate::event_io_processor::EventIOProcessor;
-use crate::fsm;
-use crate::fsm::{Event, FinishMode, InvokeId, ParamPair, ScxmlSession, SessionId};
 #[cfg(feature = "BasicHttpEventIOProcessor")]
 use crate::event_io_processor::http_event_io_processor::BasicHTTPEventIOProcessor;
 use crate::event_io_processor::scxml_event_io_processor::ScxmlEventIOProcessor;
+use crate::event_io_processor::EventIOProcessor;
+use crate::fsm;
+use crate::fsm::{Event, FinishMode, InvokeId, ParamPair, ScxmlSession, SessionId};
 #[cfg(feature = "xml")]
 use crate::scxml_reader;
 #[cfg(feature = "xml")]

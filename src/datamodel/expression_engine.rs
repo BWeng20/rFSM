@@ -1,18 +1,13 @@
 //! Implements the SCXML Data model for rFSM Expressions.
 
 use crate::actions::{Action, ActionWrapper};
-use log::error;
 use std::collections::HashMap;
 use std::ops::Deref;
 
-#[cfg(not(feature = "EnvLog"))]
-use std::println as info;
-
-#[cfg(feature = "EnvLog")]
-use log::info;
+use crate::common::{error, info};
 
 #[cfg(feature = "Debug")]
-use log::debug;
+use crate::common::debug;
 
 use crate::datamodel::{
     create_data_arc, data_to_string, str_to_source, Data, DataArc, Datamodel, DatamodelFactory, GlobalDataArc,
@@ -476,15 +471,13 @@ impl Datamodel for RFsmExpressionDatamodel {
         let data_value = match &event.param_values {
             None => match &event.content {
                 None => self.null_data.clone(),
-                Some(cd) => {
-                    match self.resolve_source_data(cd) {
-                        Ok(val) => val,
-                        Err(err) => {
-                            error!("Can't eval event content '{}': {}", cd, err);
-                            self.null_data.clone()
-                        }
+                Some(cd) => match self.resolve_source_data(cd) {
+                    Ok(val) => val,
+                    Err(err) => {
+                        error!("Can't eval event content '{}': {}", cd, err);
+                        self.null_data.clone()
                     }
-                }
+                },
             },
             Some(pv) => {
                 let mut data = HashMap::with_capacity(pv.len());
@@ -691,11 +684,11 @@ impl Datamodel for RFsmExpressionDatamodel {
 
 #[cfg(test)]
 mod tests {
-    use crate::datamodel::{create_data_arc, create_global_data_arc, Data};
+    use crate::common::init_logging;
     use crate::datamodel::expression_engine::RFsmExpressionDatamodel;
+    use crate::datamodel::{create_data_arc, create_global_data_arc, Data};
     use crate::expression_engine::expressions::ExpressionResult;
     use crate::expression_engine::parser::ExpressionParser;
-    use crate::common::init_logging;
     use std::collections::HashMap;
 
     #[test]

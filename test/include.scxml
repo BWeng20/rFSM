@@ -1,0 +1,6 @@
+<state id="Include">
+    <onentry>
+        <log expr="'Inside Include'"/>
+    </onentry>
+    <transition event="EventLeaveInclude" target="TestState"/>
+</state>

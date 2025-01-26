@@ -1,14 +1,22 @@
 //! Common functions.
 //!
 
+#[cfg(all(not(test), feature = "EnvLog"))]
+pub use log::{debug, error, info, warn};
+
+#[cfg(any(test, not(feature = "EnvLog")))]
+pub use std::{println as info, println as debug, println as error, println as warn};
+
 #[cfg(feature = "EnvLog")]
 use chrono::Local;
+#[cfg(feature = "EnvLog")]
+use std::io::Write;
+
 use std::collections::HashMap;
 use std::env;
 #[cfg(feature = "Trace")]
 use std::sync::mpsc::Sender;
-#[cfg(feature = "Trace")]
-use log::error;
+
 #[cfg(feature = "Trace")]
 use std::str::FromStr;
 

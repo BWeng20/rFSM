@@ -2,7 +2,9 @@
 //! Usage:
 //!    eval \<expressions\>
 
+use rufsm::common::info;
 use std::process;
+
 use rufsm::common::init_logging;
 use rufsm::datamodel::create_global_data_arc;
 use rufsm::datamodel::expression_engine::RFsmExpressionDatamodel;
@@ -14,7 +16,7 @@ fn main() {
     let (_named_opt, final_args) = rufsm::common::get_arguments(&[]);
 
     if final_args.is_empty() {
-        println!("Missing argument. Please specify one ruFsm Expression");
+        info!("Missing argument. Please specify one ruFsm Expression");
         process::exit(1);
     }
 
@@ -32,6 +34,4 @@ fn main() {
             }
         }
     }
-
-
 }

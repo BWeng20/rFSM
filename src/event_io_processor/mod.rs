@@ -7,7 +7,7 @@ use std::fmt::Debug;
 use std::sync::mpsc::Sender;
 
 #[cfg(feature = "Debug")]
-use log::debug;
+use crate::common::debug;
 
 use crate::datamodel::{Datamodel, GlobalDataArc, ToAny};
 use crate::fsm::SessionId;

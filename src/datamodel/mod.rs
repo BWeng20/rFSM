@@ -1,5 +1,11 @@
 //! Defines the API used to access the data models.
 
+use crate::common::{debug, error, info, warn};
+use crate::expression_engine::lexer::{ExpressionLexer, Token};
+use crate::fsm::{
+    vec_to_string, CommonContent, Event, ExecutableContentId, Fsm, GlobalData, InvokeId, ParamPair, Parameter, State,
+    StateId,
+};
 use std::any::Any;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -7,24 +13,6 @@ use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
 use std::sync::{Arc, LockResult, Mutex, MutexGuard};
-
-#[cfg(all(feature = "Debug", feature = "EnvLog"))]
-use log::warn;
-
-#[cfg(all(feature = "Debug", not(feature = "EnvLog")))]
-use std::println as warn;
-
-#[cfg(not(feature = "EnvLog"))]
-use std::{println as info, println as debug, println as error};
-
-#[cfg(feature = "EnvLog")]
-use log::{debug, error, info};
-
-use crate::expression_engine::lexer::{ExpressionLexer, Token};
-use crate::fsm::{
-    vec_to_string, CommonContent, Event, ExecutableContentId, Fsm, GlobalData, InvokeId, ParamPair, Parameter, State,
-    StateId,
-};
 
 use crate::actions::ActionMap;
 use crate::event_io_processor::EventIOProcessor;
@@ -1190,12 +1178,8 @@ impl DataStore {
     pub fn get(&self, key: &str) -> Option<DataArc> {
         #[allow(clippy::manual_map)]
         match self.map.get(key) {
-            None => {
-                None
-            }
-            Some(v) => {
-                Some(v.clone())
-            }
+            None => None,
+            Some(v) => Some(v.clone()),
         }
     }
 

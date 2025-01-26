@@ -1,9 +1,8 @@
-use log::{debug, error};
 use rufsm::actions::{Action, ActionWrapper};
+use rufsm::common::init_logging;
 use rufsm::datamodel::Data;
 use rufsm::fsm::GlobalData;
 use rufsm::fsm_executor::FsmExecutor;
-use rufsm::common::init_logging;
 use std::process::exit;
 
 #[cfg(feature = "Trace")]
@@ -34,7 +33,7 @@ async fn main() {
     // if feature EnvLog is active, this will initialize env_logger.
     init_logging();
 
-    debug!(
+    println!(
         r#"Action Example
 -----------------------------------------
 The FSM will call two custom actions from different places.
@@ -74,7 +73,7 @@ These actions can be called at any element that containt expressions or executab
             session = s;
         }
         Err(err) => {
-            error!("Failed to execute: {}", err);
+            println!("Failed to execute: {}", err);
             exit(1);
         }
     };

@@ -5,11 +5,8 @@ use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
-#[cfg(all(feature = "Debug", not(feature = "EnvLog")))]
-use std::println as debug;
-
-#[cfg(all(feature = "Debug", feature = "EnvLog"))]
-use log::debug;
+#[cfg(feature = "Debug")]
+use crate::common::debug;
 
 use crate::datamodel::{
     create_data_arc, data_arc_to_string, numeric_to_integer, operation_and, operation_divide, operation_equal,
@@ -217,9 +214,7 @@ impl ExpressionVariable {
 impl Expression for ExpressionVariable {
     fn execute(&self, context: &mut GlobalDataLock, allow_undefined: bool) -> ExpressionResult {
         match context.data.get(&self.name) {
-            Some(value) => {
-                Ok(value.clone())
-            }
+            Some(value) => Ok(value.clone()),
             None => {
                 if allow_undefined {
                     context.data.set_undefined(self.name.clone(), Data::None());
@@ -639,11 +634,11 @@ impl Expression for ExpressionSequence {
 
 #[cfg(test)]
 mod tests {
-    use crate::datamodel::{create_data_arc, create_global_data_arc, Data};
+    use crate::common::init_logging;
     use crate::datamodel::expression_engine::RFsmExpressionDatamodel;
+    use crate::datamodel::{create_data_arc, create_global_data_arc, Data};
     use crate::expression_engine::expressions::ExpressionResult;
     use crate::expression_engine::parser::ExpressionParser;
-    use crate::common::init_logging;
     use std::collections::HashMap;
 
     #[test]

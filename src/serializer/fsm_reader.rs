@@ -4,18 +4,10 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[cfg(all(feature = "Debug_Serializer", not(feature = "EnvLog")))]
-use std::println as debug;
+#[cfg(feature = "Debug_Serializer")]
+use crate::common::debug;
 
-#[cfg(all(feature = "Debug_Serializer", feature = "EnvLog"))]
-use log::debug;
-
-#[cfg(not(feature = "EnvLog"))]
-use std::println as info;
-
-#[cfg(feature = "EnvLog")]
-use log::info;
-
+use crate::common::info;
 use crate::datamodel::{Data, DataArc};
 use crate::executable_content;
 use crate::executable_content::{

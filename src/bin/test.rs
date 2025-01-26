@@ -1,11 +1,7 @@
 use std::path::Path;
 
-#[cfg(all(feature = "Debug", not(feature = "EnvLog")))]
-use std::println as debug;
-
-#[cfg(all(feature = "Debug", feature = "EnvLog"))]
-use log::debug;
-
+#[cfg(feature = "Debug")]
+use rufsm::common::debug;
 use rufsm::fsm::Fsm;
 #[cfg(feature = "xml")]
 use rufsm::scxml_reader;

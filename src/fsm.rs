@@ -5,16 +5,13 @@
 #![allow(non_camel_case_types)]
 #![allow(clippy::doc_lazy_continuation)]
 
+use crate::actions::{Action, ActionWrapper};
+use crate::common::error;
 use lazy_static::lazy_static;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::Hash;
-use std::ops::{DerefMut};
-#[cfg(test)]
-use std::println as error;
-#[cfg(test)]
-#[cfg(feature = "Debug")]
-use std::println as debug;
+use std::ops::DerefMut;
 use std::slice::Iter;
 use std::str::FromStr;
 use std::string::ToString;
@@ -23,28 +20,21 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::{fmt, thread};
-#[cfg(not(test))]
-use log::error;
 
-use crate::actions::{Action, ActionWrapper};
-
-#[cfg(all(not(test), feature = "Debug", not(feature = "EnvLog")))]
-use std::println as debug;
-
-#[cfg(all(not(test), feature = "Debug", feature = "EnvLog"))]
-use log::debug;
+#[cfg(feature = "Debug")]
+use crate::common::debug;
 
 use timer::Guard;
 
+#[cfg(feature = "ECMAScriptModel")]
+use crate::datamodel::ecma_script::ECMAScriptDatamodelFactory;
+#[cfg(feature = "ECMAScriptModel")]
+use crate::datamodel::ecma_script::ECMA_SCRIPT_LC;
 use crate::datamodel::{
     create_data_arc, Data, DataArc, DataStore, Datamodel, DatamodelFactory, GlobalDataArc, NullDatamodelFactory,
     NULL_DATAMODEL, NULL_DATAMODEL_LC, SCXML_INVOKE_TYPE, SCXML_INVOKE_TYPE_SHORT, SESSION_ID_VARIABLE_NAME,
     SESSION_NAME_VARIABLE_NAME,
 };
-#[cfg(feature = "ECMAScriptModel")]
-use crate::datamodel::ecma_script::ECMAScriptDatamodelFactory;
-#[cfg(feature = "ECMAScriptModel")]
-use crate::datamodel::ecma_script::ECMA_SCRIPT_LC;
 
 use crate::event_io_processor::EventIOProcessor;
 use crate::executable_content::ExecutableContent;
@@ -52,9 +42,11 @@ use crate::executable_content::ExecutableContent;
 #[cfg(feature = "RfsmExpressionModel")]
 use crate::datamodel::expression_engine::{RFsmExpressionDatamodelFactory, RFSM_EXPRESSION_DATAMODEL_LC};
 
+use crate::event_io_processor::scxml_event_io_processor::{
+    SCXML_EVENT_PROCESSOR_SHORT_TYPE, SCXML_TARGET_SESSION_ID_PREFIX,
+};
 use crate::fsm::BindingType::{Early, Late};
 use crate::fsm_executor::FsmExecutor;
-use crate::event_io_processor::scxml_event_io_processor::{SCXML_EVENT_PROCESSOR_SHORT_TYPE, SCXML_TARGET_SESSION_ID_PREFIX};
 
 /// Gets the global data store from datamodel.
 macro_rules! get_global {
@@ -750,7 +742,6 @@ impl Display for Event {
 }
 
 impl Event {
-
     pub fn new_external() -> Event {
         Event {
             name: String::default(),
@@ -2343,7 +2334,9 @@ impl Fsm {
                         None => {}
                         Some(done_data) => {
                             datamodel.evaluate_params(&done_data.params, &mut name_values);
-                            content = datamodel.evaluate_content(&done_data.content).map(|data| data.lock().unwrap().clone());
+                            content = datamodel
+                                .evaluate_content(&done_data.content)
+                                .map(|data| data.lock().unwrap().clone());
                         }
                     }
                     let param_values = if name_values.is_empty() {

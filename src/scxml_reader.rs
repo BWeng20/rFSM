@@ -7,20 +7,16 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 #[cfg(feature = "Debug_Reader")]
-#[cfg(test)]
-use std::println as debug;
+use crate::common::debug;
 
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, mem, str, string::String};
 
-use crate::datamodel::{create_data_arc, Data, SourceCode};
+use crate::common::info;
 use crate::common::ArgOption;
-#[cfg(feature = "Debug_Reader")]
-#[cfg(not(test))]
-use log::debug;
-use log::info;
+use crate::datamodel::{create_data_arc, Data, SourceCode};
 use quick_xml::events::attributes::Attributes;
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
@@ -2003,7 +1999,7 @@ pub fn parse_from_xml_with_includes(xml: String, include_paths: &[PathBuf]) -> R
 
 #[cfg(test)]
 mod tests {
-    use log::debug;
+    use crate::common::debug;
 
     #[test]
     #[should_panic]
@@ -2026,7 +2022,7 @@ mod tests {
     fn script_with_src_should_load_file() {
         let r = crate::scxml_reader::parse_from_xml(
             "<scxml initial='Main'><state id='Main'>\
-    <transition><script src='xml/example/script.js'></script></transition></state></scxml>"
+    <transition><script src='test/script.js'></script></transition></state></scxml>"
                 .to_string(),
         );
         assert!(r.is_ok());
@@ -2091,7 +2087,7 @@ mod tests {
     #[test]
     fn xinclude_should_read() {
         let _r = crate::scxml_reader::parse_from_xml(
-            "<scxml><state><include href='xml/example/Test2Sub1.xml' parse='text'/></state></scxml>".to_string(),
+            "<scxml><state><include href='test/include.scxml' parse='text'/></state></scxml>".to_string(),
         );
     }
 

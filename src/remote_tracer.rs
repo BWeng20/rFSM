@@ -1,6 +1,6 @@
+use crate::common::ArgOption;
 use crate::fsm::{Event, State};
 use crate::tracer::{set_tracer_factory, TraceMode, Tracer, TracerFactory};
-use crate::common::ArgOption;
 use std::fmt::{Debug, Display};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};

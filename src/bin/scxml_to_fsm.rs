@@ -3,16 +3,15 @@
 //!    scxml_to_fsm \<xml-file\> \<ruFsm-file\>
 extern crate core;
 
-use log::error;
+use rufsm::common::{error, init_logging};
+use rufsm::scxml_reader;
 use rufsm::scxml_reader::include_path_from_arguments;
 use rufsm::scxml_reader::INCLUDE_PATH_ARGUMENT_OPTION;
 use rufsm::serializer::default_protocol_writer::DefaultProtocolWriter;
 use rufsm::serializer::fsm_writer::FsmWriter;
-use rufsm::scxml_reader;
 use std::fs::File;
 use std::io::BufWriter;
 use std::process;
-use rufsm::common::init_logging;
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {

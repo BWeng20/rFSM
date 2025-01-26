@@ -14,8 +14,9 @@ use std::ops::Deref;
 
 #[cfg(feature = "Debug")]
 use crate::fsm::vec_to_string;
+
 #[cfg(feature = "Debug")]
-use log::debug;
+use crate::common::debug;
 
 /// Static tool struct to process expressions.
 pub struct ExpressionParser {}

@@ -12,22 +12,7 @@ use std::time::Duration;
 use std::{process, thread};
 
 use crate::actions::ActionWrapper;
-use log::warn;
-
-#[cfg(all(not(test), feature = "Debug", not(feature = "EnvLog")))]
-use std::{println as error, println as info};
-
-#[cfg(all(not(test), feature = "Debug", feature = "EnvLog"))]
-use log::{error, info};
-
-#[cfg(all(not(test), not(feature="Debug"), feature="EnvLog"))]
-use log::{info,error};
-
-#[cfg(all(not(test), not(feature="Debug"), not(feature = "EnvLog")))]
-use std::{println as info, println as error};
-
-#[cfg(test)]
-use std::{println as error, println as info};
+use crate::common::{error, info, warn};
 
 #[cfg(feature = "json-config")]
 use serde::Deserialize;

@@ -1,20 +1,16 @@
+use crate::common::info;
 use lazy_static::lazy_static;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::DerefMut;
-#[cfg(test)]
-use std::println as info;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
-#[cfg(not(test))]
-use log::info;
-
-use crate::fsm::{Event, OrderedSet, State};
-use crate::fsm;
 use crate::common::ArgOption;
+use crate::fsm;
+use crate::fsm::{Event, OrderedSet, State};
 
 /// Trace mode for FSM Tracer.
 #[derive(Debug, Clone, PartialEq, Copy, Hash, Eq)]

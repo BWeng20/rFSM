@@ -6,11 +6,11 @@
 
 extern crate core;
 
-#[cfg(feature = "xml")]
-pub mod scxml_reader;
 pub mod executable_content;
 pub mod fsm;
 pub mod fsm_executor;
+#[cfg(feature = "xml")]
+pub mod scxml_reader;
 
 #[cfg(feature = "serializer")]
 pub mod serializer;
@@ -22,8 +22,8 @@ pub mod tracer;
 pub mod remote_tracer;
 
 pub mod actions;
-pub mod test;
-pub mod datamodel;
-pub mod expression_engine;
-pub mod event_io_processor;
 pub mod common;
+pub mod datamodel;
+pub mod event_io_processor;
+pub mod expression_engine;
+pub mod test;

@@ -2,17 +2,11 @@
 //! I/O Processor implementation for type "<http://www.w3.org/TR/scxml/#SCXMLEventProcessor>" (or short-cut "scxml").
 //! See [W3C:SCXML - SCXML Event I/O Processor](/doc/W3C_SCXML_2024_07_13/index.html#/#SCXMLEventProcessor).
 
-#[cfg(feature = "Debug")]
-#[cfg(not(test))]
-use log::debug;
-
-use log::error;
 use std::fmt::Debug;
 
-#[cfg(test)]
 #[cfg(feature = "Debug")]
-use std::println as debug;
-
+use crate::common::debug;
+use crate::common::error;
 use crate::datamodel::{GlobalDataArc, GlobalDataLock, SCXML_EVENT_PROCESSOR};
 use crate::event_io_processor::{EventIOProcessor, ExternalQueueContainer};
 use crate::fsm::{Event, EventType, SessionId};

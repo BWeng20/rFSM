@@ -7,10 +7,10 @@ use byteorder::ReadBytesExt;
 use std::collections::HashMap;
 
 #[cfg(feature = "Debug_Serializer")]
-use log::debug;
+use crate::common::debug;
 
+use crate::common::error;
 use crate::datamodel::{Data, SourceCode};
-use log::error;
 use std::io::Read;
 
 pub struct DefaultProtocolReader<R>
